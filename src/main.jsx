@@ -4,8 +4,7 @@ import App from './App'
 import { SettingsProvider, applySettings, loadSettings } from './lib/settings'
 import { AuthProvider } from './lib/auth'
 import { ToastProvider } from './components/ui'
-import './styles/glass.css'
-import './styles/polish.css'
+import './styles/theme.css'
 
 applySettings(loadSettings()) // paint the right theme before React mounts
 

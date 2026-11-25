@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import {
-  LayoutGrid, MonitorPlay, FolderUp, BarChart3, Palette, RefreshCw, Search, PanelLeftClose, PanelLeftOpen, LogOut, Gauge, BookMarked, Command,
-} from 'lucide-react'
+import { LayoutGrid, MonitorPlay, FolderUp, BarChart3, SlidersHorizontal, RefreshCw, Search, BookMarked, Command, ArrowLeft, Gauge } from 'lucide-react'
 import Background from './components/Background'
-import { Glass, Modal, Spinner, pageMotion, spring, useSpecularLight, useToast } from './components/ui'
+import { Glass, Modal, Spinner, spring, useToast } from './components/ui'
 import { useAuth } from './lib/auth'
-import { useSettings } from './lib/settings'
+import { useIsMobile } from './lib/settings'
 import { go, useRoute } from './lib/router'
 import { onRateLimit } from './lib/github'
 import Login from './views/Login'
@@ -17,19 +15,17 @@ import Push from './views/Push'
 import Insights from './views/Insights'
 import Customize from './views/Customize'
 
-const NAV = [
-  { id: 'repos', label: 'Repositories', icon: LayoutGrid, sub: 'Everything you own on GitHub' },
-  { id: 'wall', label: 'Preview Wall', icon: MonitorPlay, sub: 'Every live site, side by side' },
-  { id: 'push', label: 'Push Folder', icon: FolderUp, sub: 'From your disk to GitHub in one step' },
-  { id: 'insights', label: 'Insights', icon: BarChart3, sub: 'Activity, languages and health' },
-  { id: 'customize', label: 'Customize', icon: Palette, sub: 'Make it yours' },
+export const NAV = [
+  { id: 'repos', label: 'Repositories', short: 'Repos', icon: LayoutGrid, sub: 'Everything you own on GitHub' },
+  { id: 'wall', label: 'Preview Wall', short: 'Sites', icon: MonitorPlay, sub: 'Every live site, side by side' },
+  { id: 'push', label: 'Push Folder', short: 'Push', icon: FolderUp, sub: 'From your disk to GitHub in one step' },
+  { id: 'insights', label: 'Insights', short: 'Insights', icon: BarChart3, sub: 'Activity, languages and health' },
+  { id: 'customize', label: 'Customize', short: 'Style', icon: SlidersHorizontal, sub: 'Your moon, your sky, your space' },
 ]
 
 export default function App() {
-  useSpecularLight()
-  const { status, user, refreshRepos, reposLoading, logout, error, setError } = useAuth()
+  const { status, error, setError } = useAuth()
   const { toast } = useToast()
-
   useEffect(() => {
     if (error && status === 'in') {
       toast(error, 'error')
@@ -37,38 +33,33 @@ export default function App() {
     }
   }, [error, status, toast, setError])
 
-  if (status === 'loading')
-    return (
-      <>
-        <Background />
-        <div className="login-wrap"><Spinner size={30} /></div>
-      </>
-    )
-  if (status === 'out')
-    return (
-      <>
-        <Background />
+  return (
+    <>
+      <Background />
+      {status === 'loading' ? (
+        <div className="login-wrap" style={{ justifyContent: 'center' }}><Spinner size={30} /></div>
+      ) : status === 'out' ? (
         <Login />
-      </>
-    )
-  return <Shell user={user} refreshRepos={refreshRepos} reposLoading={reposLoading} logout={logout} />
+      ) : (
+        <Shell />
+      )}
+    </>
+  )
 }
 
-function Shell({ user, refreshRepos, reposLoading, logout }) {
+function usePage() {
   const route = useRoute()
-  const { settings, update } = useSettings()
-  const { toast, confirm } = useToast()
-  const [palette, setPalette] = useState(false)
-  const [rate, setRate] = useState(null)
-  useEffect(() => onRateLimit(setRate), [])
+  const page = NAV.some((n) => n.id === route.page) || route.page === 'repo' ? route.page : 'repos'
+  return { route, page, active: page === 'repo' ? 'repos' : page }
+}
 
+function useShortcuts(setPalette) {
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPalette((p) => !p)
       }
-      // Alt + 1…5 jumps between pages
       if (e.altKey && /^[1-5]$/.test(e.key)) {
         e.preventDefault()
         go(NAV[+e.key - 1].id)
@@ -76,105 +67,161 @@ function Shell({ user, refreshRepos, reposLoading, logout }) {
     }
     addEventListener('keydown', onKey)
     return () => removeEventListener('keydown', onKey)
-  }, [])
+  }, [setPalette])
+}
 
-  const page = NAV.some((n) => n.id === route.page) || route.page === 'repo' ? route.page : 'repos'
-  const active = page === 'repo' ? 'repos' : page
-  const title = page === 'repo' ? route.params[1] : NAV.find((n) => n.id === page)?.label
-  const subtitle = page === 'repo' ? `${route.params[0]} / repository` : NAV.find((n) => n.id === page)?.sub
-  const collapsed = settings.railCollapsed
-
-  const { demo } = useAuth()
-  const doLogout = async () => {
-    if (demo) return logout(false)
-    const wipe = await confirm({
-      title: 'Sign out',
-      body: 'Sign out of RepoVerse on this browser?\n\n"Sign out & erase" also deletes your themes, tags, folders and the encryption key from this device.',
-      okLabel: 'Sign out & erase everything',
-      danger: true,
-    })
-    if (wipe) logout(true)
-  }
-
+function Shell() {
+  const mobile = useIsMobile()
+  const [palette, setPalette] = useState(false)
+  useShortcuts(setPalette)
   return (
     <>
-      <Background />
-      <div className="app">
-        <Glass as="nav" className={`rail ${collapsed ? 'collapsed' : ''}`} liquid lit={false}>
-          <div className="brand">
-            <div className="brand-mark" />
-            <span className="brand-name">RepoVerse</span>
-          </div>
-          {NAV.map((n, i) => (
-            <div key={n.id} style={{ display: 'contents' }}>
-              {i === 0 && <div className="rail-section">Workspace</div>}
-              {i === 3 && <div className="rail-section">You</div>}
-              <button className={`nav-btn ${active === n.id ? 'active' : ''}`} onClick={() => go(n.id)} title={`${n.label} (Alt+${i + 1})`}>
-                {active === n.id && <motion.span layoutId="nav-pill" className="nav-pill" transition={spring} />}
-                <n.icon size={19} />
-                <span className="nav-label">{n.label}</span>
-                <span className="nav-kbd">Alt {i + 1}</span>
-              </button>
-            </div>
-          ))}
-          <div className="rail-spacer" />
-          <button className="nav-btn rail-collapse" onClick={() => update({ railCollapsed: !collapsed })} title={collapsed ? 'Expand' : 'Collapse'}>
-            {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
-            <span className="nav-label">Collapse</span>
-          </button>
-          <div className="rail-foot">
-            <span className="avatar-wrap"><img className="avatar" src={user.avatar_url} alt="" /></span>
-            <div className="grow rail-foot-text" style={{ lineHeight: 1.25 }}>
-              <div style={{ fontWeight: 600, fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.name || user.login}</div>
-              <div className="faint" style={{ fontSize: 12 }}>@{user.login}</div>
-            </div>
-            <button className="btn ghost sm icon rail-foot-text" onClick={doLogout} title="Sign out">
-              <LogOut size={15} />
-            </button>
-          </div>
-        </Glass>
-
-        <main className="main">
-          <Glass className="topbar" lit={false}>
-            <div className="crumb">
-              <small>{subtitle}</small>
-              <h1>{title}</h1>
-            </div>
-            {demo && <span className="tag" style={{ borderColor: 'var(--c2)', color: 'var(--c2)' }}>Demo mode</span>}
-            <div className="grow" />
-            <button className="btn jump" onClick={() => setPalette(true)}>
-              <Search size={16} /> <span className="grow jump-text" style={{ textAlign: 'left' }}>Jump to…</span> <span className="kbd">Ctrl K</span>
-            </button>
-            {rate?.remaining != null && (
-              <span className="tag" title={`GitHub API calls left this hour. Resets ${new Date(rate.reset * 1000).toLocaleTimeString()}`}>
-                <Gauge size={12} /> {rate.remaining.toLocaleString()}/{rate.limit?.toLocaleString()}
-              </span>
-            )}
-            <button
-              className="btn icon"
-              title="Refresh from GitHub"
-              onClick={() => refreshRepos().then(() => toast('Synced with GitHub', 'success')).catch((e) => toast(e.message, 'error'))}
-            >
-              {reposLoading ? <Spinner /> : <RefreshCw size={17} />}
-            </button>
-          </Glass>
-          <div className="content">
-            <motion.div key={page + (route.params[0] || '') + (route.params[1] || '')} {...pageMotion}>
-                {page === 'repos' && <Repos />}
-                {page === 'repo' && <RepoDetail owner={route.params[0]} name={route.params[1]} tab={route.params[2] || 'overview'} path={route.params.slice(3).join('/')} />}
-                {page === 'wall' && <Wall />}
-                {page === 'push' && <Push />}
-                {page === 'insights' && <Insights />}
-                {page === 'customize' && <Customize />}
-            </motion.div>
-          </div>
-        </main>
-      </div>
+      {mobile ? <MobileShell openPalette={() => setPalette(true)} /> : <DesktopShell openPalette={() => setPalette(true)} />}
       <CommandPalette open={palette} onClose={() => setPalette(false)} />
     </>
   )
 }
 
+function PageBody({ route, page, mobile }) {
+  return (
+    <>
+      {page === 'repos' && <Repos mobile={mobile} />}
+      {page === 'repo' && <RepoDetail owner={route.params[0]} name={route.params[1]} tab={route.params[2] || 'overview'} path={route.params.slice(3).join('/')} />}
+      {page === 'wall' && <Wall />}
+      {page === 'push' && <Push />}
+      {page === 'insights' && <Insights />}
+      {page === 'customize' && <Customize />}
+    </>
+  )
+}
+
+function useSignOut() {
+  const { demo, logout } = useAuth()
+  const { confirm } = useToast()
+  return async () => {
+    if (demo) return logout(false)
+    const ok = await confirm({
+      title: 'Sign out',
+      body: 'Sign out of RepoVerse on this device?\nYour login, cached repos, tags and pins are erased from this browser.',
+      okLabel: 'Sign out',
+      danger: true,
+    })
+    if (ok) logout(true)
+  }
+}
+
+const refreshWith = (refreshRepos, toast) => () => refreshRepos().then(() => toast('Synced with GitHub', 'success')).catch((e) => toast(e.message, 'error'))
+
+// ======================================================================= desktop
+function DesktopShell({ openPalette }) {
+  const { route, page, active } = usePage()
+  const { user, refreshRepos, reposLoading, demo } = useAuth()
+  const { toast } = useToast()
+  const signOut = useSignOut()
+  const [rate, setRate] = useState(null)
+  useEffect(() => onRateLimit(setRate), [])
+  const nav = NAV.find((n) => n.id === active)
+  const actions = <HeadActions openPalette={openPalette} rate={rate} reposLoading={reposLoading} onRefresh={refreshWith(refreshRepos, toast)} />
+
+  return (
+    <div className="app">
+      <Glass as="nav" className="dock" aria-label="Main">
+        <button className="dock-logo" onClick={() => go('repos')} aria-label="RepoVerse home" title="RepoVerse" />
+        {NAV.map((n, i) => (
+          <button key={n.id} className={`dock-btn ${active === n.id ? 'active' : ''}`} onClick={() => go(n.id)} data-tip={`${n.label}  ·  Alt ${i + 1}`} aria-label={n.label}>
+            {active === n.id && <motion.span layoutId="dock-pill" className="dock-pill" transition={spring} />}
+            <n.icon size={20} />
+          </button>
+        ))}
+        <div className="dock-sep" />
+        <button className="dock-btn" onClick={signOut} data-tip={demo ? 'Leave demo' : `Sign out @${user.login}`} aria-label="Sign out">
+          <img className="avatar" src={user.avatar_url} alt="" />
+        </button>
+      </Glass>
+
+      <main className="main" id="main">
+        <div className="page" key={page + (route.params[0] || '') + (route.params[1] || '')}>
+          {page === 'repos' ? (
+            <div className="row" style={{ justifyContent: 'flex-end', marginBottom: 4 }}>
+              {demo && <span className="tag" style={{ color: 'var(--c3)' }}>Demo mode</span>}
+              {actions}
+            </div>
+          ) : (
+            <header className="page-head" style={{ animation: 'rise .5s var(--ease) both' }}>
+              <div className="titles">
+                {page === 'repo' ? (
+                  <button className="btn ghost sm" style={{ marginLeft: -10 }} onClick={() => go('repos')}><ArrowLeft size={15} /> All repositories</button>
+                ) : (
+                  <div className="eyebrow">{nav.sub}</div>
+                )}
+                <h1>{page === 'repo' ? route.params[1] : nav.label}</h1>
+              </div>
+              {actions}
+            </header>
+          )}
+          <PageBody route={route} page={page} />
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function HeadActions({ openPalette, rate, reposLoading, onRefresh }) {
+  return (
+    <div className="head-actions">
+      <button className="glass pill-search" onClick={openPalette}>
+        <Search size={16} /> <span className="grow" style={{ textAlign: 'left' }}>Jump to…</span> <span className="kbd">Ctrl K</span>
+      </button>
+      {rate?.remaining != null && (
+        <span className="tag" title={`GitHub API calls left this hour (resets ${new Date(rate.reset * 1000).toLocaleTimeString()})`}>
+          <Gauge size={12} /> {rate.remaining.toLocaleString()}
+        </span>
+      )}
+      <button className="glass btn icon" title="Refresh from GitHub" aria-label="Refresh" onClick={onRefresh}>
+        {reposLoading ? <Spinner /> : <RefreshCw size={17} />}
+      </button>
+    </div>
+  )
+}
+
+// ======================================================================= mobile
+function MobileShell({ openPalette }) {
+  const { route, page, active } = usePage()
+  const { user, refreshRepos, reposLoading } = useAuth()
+  const { toast } = useToast()
+  const signOut = useSignOut()
+  const nav = NAV.find((n) => n.id === active)
+
+  return (
+    <div className="m-app">
+      <header className="m-head">
+        {page === 'repo' && <button className="glass btn icon" onClick={() => go('repos')} aria-label="Back"><ArrowLeft size={18} /></button>}
+        <h1>{page === 'repo' ? route.params[1] : page === 'repos' ? 'RepoVerse' : nav.label}</h1>
+        <button className="glass btn icon" onClick={openPalette} aria-label="Search"><Search size={18} /></button>
+        {page === 'repos' && (
+          <button className="glass btn icon" onClick={refreshWith(refreshRepos, toast)} aria-label="Refresh">
+            {reposLoading ? <Spinner /> : <RefreshCw size={17} />}
+          </button>
+        )}
+        <button className="btn ghost icon" onClick={signOut} aria-label="Account"><img className="avatar" src={user.avatar_url} alt="" /></button>
+      </header>
+      <main className="m-main" key={page + (route.params[1] || '')}>
+        <PageBody route={route} page={page} mobile />
+      </main>
+      <Glass as="nav" className="m-tabs" aria-label="Main">
+        {NAV.map((n) => (
+          <button key={n.id} className={`m-tab ${active === n.id ? 'on' : ''}`} onClick={() => go(n.id)} aria-label={n.label}>
+            {active === n.id && <motion.span layoutId="m-pill" className="dock-pill" transition={spring} />}
+            <n.icon size={21} />
+            {n.short}
+          </button>
+        ))}
+      </Glass>
+    </div>
+  )
+}
+
+// ======================================================================= palette
 function CommandPalette({ open, onClose }) {
   const { repos } = useAuth()
   const [q, setQ] = useState('')
@@ -188,8 +235,8 @@ function CommandPalette({ open, onClose }) {
   const items = useMemo(() => {
     const pages = NAV.map((n) => ({ key: 'p' + n.id, label: n.label, icon: n.icon, hint: 'Page', run: () => go(n.id) }))
     const rs = repos.map((r) => ({ key: r.full_name, label: r.full_name, icon: BookMarked, hint: r.private ? 'Private' : 'Repo', run: () => go('repo', r.owner.login, r.name) }))
-    const all = [...pages, ...rs]
     const t = q.toLowerCase().trim()
+    const all = [...pages, ...rs]
     return (t ? all.filter((i) => i.label.toLowerCase().includes(t)) : all).slice(0, 40)
   }, [q, repos])
   const run = (i) => {
@@ -203,10 +250,7 @@ function CommandPalette({ open, onClose }) {
         autoFocus
         placeholder="Search pages and repositories…"
         value={q}
-        onChange={(e) => {
-          setQ(e.target.value)
-          setSel(0)
-        }}
+        onChange={(e) => (setQ(e.target.value), setSel(0))}
         onKeyDown={(e) => {
           if (e.key === 'ArrowDown') (e.preventDefault(), setSel((s) => Math.min(items.length - 1, s + 1)))
           if (e.key === 'ArrowUp') (e.preventDefault(), setSel((s) => Math.max(0, s - 1)))

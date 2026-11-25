@@ -79,11 +79,11 @@ export async function delSecure(name) {
   await tx('kv', 'readwrite', (s) => s.delete(name))
 }
 
-/** Wipe everything: data AND the encryption key. */
-export async function wipeAll() {
+/** Wipe all private data AND the encryption key. Pass keepLook=false to also reset the theme. */
+export async function wipeAll(keepLook = true) {
   await tx('kv', 'readwrite', (s) => s.clear())
   await tx('keys', 'readwrite', (s) => s.clear())
   keyPromise = null
-  localStorage.removeItem('rv-settings')
+  if (!keepLook) localStorage.removeItem('rv-settings')
   sessionStorage.clear()
 }

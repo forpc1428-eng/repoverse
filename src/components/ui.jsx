@@ -1,70 +1,28 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { CheckCircle2, AlertTriangle, Info, X } from 'lucide-react'
-import { useSettings } from '../lib/settings'
 
 export const spring = { type: 'spring', stiffness: 380, damping: 32, mass: 0.8 }
 
-/** One global pointer listener feeds the specular highlight of every .glass.lit element. */
-export function useSpecularLight() {
-  useEffect(() => {
-    let last = null
-    const onMove = (e) => {
-      const el = e.target.closest?.('.glass.lit')
-      if (last && last !== el) last.style.removeProperty('--lit')
-      if (!el) return (last = null)
-      const r = el.getBoundingClientRect()
-      el.style.setProperty('--mx', `${e.clientX - r.left}px`)
-      el.style.setProperty('--my', `${e.clientY - r.top}px`)
-      last = el
-    }
-    addEventListener('pointermove', onMove, { passive: true })
-    return () => removeEventListener('pointermove', onMove)
-  }, [])
-}
+/** Kept for compatibility: the pointer-tracking light was removed for performance. */
+export function useSpecularLight() {}
 
-export function Glass({ as: Tag = 'div', className = '', lit = true, liquid = false, children, ...rest }) {
-  const { settings } = useSettings()
+// eslint-disable-next-line no-unused-vars
+export function Glass({ as: Tag = 'div', className = '', lit, liquid, children, ...rest }) {
   return (
-    <Tag className={`glass ${lit && settings.specular ? 'lit' : ''} ${liquid ? 'liquid' : ''} ${className}`} {...rest}>
+    <Tag className={`glass ${className}`} {...rest}>
       {children}
     </Tag>
   )
 }
 
-/** 3D-tilting glass card that follows the pointer with spring physics. */
+/** A card that lifts on hover (pure CSS, no per-frame JavaScript). */
 export function TiltCard({ className = '', children, onClick, style, ...rest }) {
-  const { settings } = useSettings()
-  const ref = useRef(null)
-  const x = useMotionValue(0.5)
-  const y = useMotionValue(0.5)
-  const rx = useSpring(useTransform(y, [0, 1], [6, -6]), { stiffness: 250, damping: 22 })
-  const ry = useSpring(useTransform(x, [0, 1], [-7, 7]), { stiffness: 250, damping: 22 })
-  const enabled = settings.tilt && !settings.reduceMotion
   return (
-    <motion.div
-      ref={ref}
-      className={`glass ${settings.specular ? 'lit' : ''} card ${className}`}
-      style={{ ...style, rotateX: enabled ? rx : 0, rotateY: enabled ? ry : 0, transformPerspective: 900 }}
-      onPointerMove={(e) => {
-        if (!enabled) return
-        const r = ref.current.getBoundingClientRect()
-        x.set((e.clientX - r.left) / r.width)
-        y.set((e.clientY - r.top) / r.height)
-      }}
-      onPointerLeave={() => {
-        x.set(0.5)
-        y.set(0.5)
-      }}
-      whileHover={enabled ? { y: -4, scale: 1.01 } : undefined}
-      whileTap={{ scale: 0.985 }}
-      transition={spring}
-      onClick={onClick}
-      {...rest}
-    >
+    <div className={`card ${className}`} style={style} onClick={onClick} role="button" tabIndex={0} onKeyDown={(e) => e.key === 'Enter' && onClick?.(e)} {...rest}>
       {children}
-    </motion.div>
+    </div>
   )
 }
 
@@ -117,9 +75,9 @@ export function Modal({ open, onClose, children, className = '', size = '' }) {
         <motion.div className="overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onMouseDown={(e) => e.target === e.currentTarget && onClose?.()}>
           <motion.div
             className={`glass glass-strong modal ${size} ${className}`}
-            initial={{ opacity: 0, y: 24, scale: 0.96, filter: 'blur(8px)' }}
-            animate={{ opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' }}
-            exit={{ opacity: 0, y: 16, scale: 0.97, filter: 'blur(6px)' }}
+            initial={{ opacity: 0, y: 24, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.98 }}
             transition={spring}
             role="dialog"
             aria-modal="true"

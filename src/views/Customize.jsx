@@ -1,85 +1,338 @@
-import { useRef, useState } from 'react'
-import { Palette, Sparkles, Image as ImageIcon, Download, Upload, CloudUpload, CloudDownload, RotateCcw, ShieldCheck, Trash2, Type, Zap, Layers } from 'lucide-react'
-import { Glass, Seg, Spinner, Switch, useToast } from '../components/ui'
-import { useSettings, THEMES, FONTS, DEFAULTS } from '../lib/settings'
+import { useEffect, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
+import {
+  Sparkles, Moon, Stars, LayoutPanelLeft, Gauge, ShieldCheck, Palette, CalendarHeart, CalendarDays, Crosshair, BatteryCharging, Zap, Download, Upload,
+  CloudUpload, CloudDownload, RotateCcw, Trash2, Eye,
+} from 'lucide-react'
+import { Glass, Seg, Spinner, Switch, spring, useToast } from '../components/ui'
+import { sceneRef } from '../components/Background'
+import { useSettings, SCENES, FONTS, DEFAULTS, useIsMobile } from '../lib/settings'
 import { useAuth, SCOPES } from '../lib/auth'
+import { phaseFromDate, phaseName, resolvePhase, illumination } from '../scene/phase'
 import { download } from '../lib/util'
 
 const GIST_FILE = 'repoverse-settings.json'
+const SECTIONS = [
+  { id: 'scenes', label: 'Scenes', icon: Sparkles },
+  { id: 'moon', label: 'Moon', icon: Moon },
+  { id: 'sky', label: 'Sky & stars', icon: Stars },
+  { id: 'ui', label: 'Interface', icon: Palette },
+  { id: 'layout', label: 'Layout', icon: LayoutPanelLeft },
+  { id: 'perf', label: 'Performance', icon: Gauge },
+  { id: 'data', label: 'Backup & privacy', icon: ShieldCheck },
+]
 
-function Slider({ label, k, min, max, step = 1, unit = '' }) {
-  const { settings: s, update } = useSettings()
+// ------------------------------------------------------------------ small controls
+function Row({ label, hint, children }) {
   return (
-    <div className="slider-row">
-      <span className="muted">{label}</span>
-      <input type="range" min={min} max={max} step={step} value={s[k]} onChange={(e) => update({ [k]: +e.target.value })} />
-      <span className="mono faint" style={{ fontSize: 12, textAlign: 'right' }}>{s[k]}{unit}</span>
+    <div className="cz-row">
+      <div className="cz-label">{label}{hint && <small>{hint}</small>}</div>
+      <div className="cz-ctl">{children}</div>
     </div>
   )
 }
-function Toggle({ label, k, hint }) {
+function Slider({ k, min, max, step = 0.01, fmt = (v) => v, label, hint }) {
+  const { settings: s, update } = useSettings()
+  const v = s[k]
+  return (
+    <Row label={label} hint={hint}>
+      <input type="range" min={min} max={max} step={step} value={v} style={{ '--fill': `${((v - min) / (max - min)) * 100}%`, flex: 1 }} onChange={(e) => update({ [k]: +e.target.value })} aria-label={label} />
+      <span className="cz-val">{fmt(v)}</span>
+    </Row>
+  )
+}
+function Toggle({ k, label, hint }) {
   const { settings: s, update } = useSettings()
   return (
-    <div className="row between" style={{ padding: '9px 0' }}>
-      <div><div>{label}</div>{hint && <div className="hint">{hint}</div>}</div>
-      <Switch on={s[k]} onChange={(v) => update({ [k]: v })} label={label} />
-    </div>
+    <Row label={label} hint={hint}>
+      <div className="grow" />
+      <Switch on={!!s[k]} onChange={(v) => update({ [k]: v })} label={label} />
+    </Row>
+  )
+}
+function Colors({ label, keys, hint }) {
+  const { settings: s, update } = useSettings()
+  return (
+    <Row label={label} hint={hint}>
+      {keys.map(([k, name]) => (
+        <label key={k} className="row" style={{ gap: 8, fontSize: 12.5 }} title={name}>
+          <input type="color" value={s[k]} onChange={(e) => update({ [k]: e.target.value })} aria-label={name} />
+          <span className="muted">{name}</span>
+        </label>
+      ))}
+    </Row>
+  )
+}
+function Choice({ k, label, hint, options }) {
+  const { settings: s, update } = useSettings()
+  return (
+    <Row label={label} hint={hint}>
+      <Seg id={k} value={s[k]} onChange={(v) => update({ [k]: v })} options={options.map(([value, l]) => ({ value, label: l }))} />
+    </Row>
+  )
+}
+
+/** Tiny CSS moon showing a phase (for scene cards). */
+function MiniMoon({ phase, tint = '#f3eee6', size = 40 }) {
+  const p = ((phase % 1) + 1) % 1
+  const lit = illumination(p)
+  const waxing = p < 0.5
+  // terminator: an ellipse whose width follows the illuminated fraction
+  const w = Math.abs(1 - 2 * lit) * size
+  return (
+    <svg className="mini-moon" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+      <circle cx={size / 2} cy={size / 2} r={size / 2} fill="rgba(0,0,0,.55)" />
+      <path
+        d={`M ${size / 2} 0 A ${size / 2} ${size / 2} 0 0 ${waxing ? 1 : 0} ${size / 2} ${size} A ${w / 2} ${size / 2} 0 0 ${lit > 0.5 === waxing ? 1 : 0} ${size / 2} 0`}
+        fill={tint}
+        style={{ filter: `drop-shadow(0 0 6px ${tint})` }}
+      />
+    </svg>
   )
 }
 
 export default function Customize() {
-  const { settings: s, update, reset, setBgImage, bgImage, userData, setUserData, setSettings } = useSettings()
-  const { gh, logout, scopes } = useAuth()
+  const mobile = useIsMobile()
+  const [section, setSection] = useState('scenes')
+  const bodyRef = useRef(null)
+  return (
+    <div className="cz">
+      <Glass as="nav" className="cz-nav" aria-label="Customize sections">
+        {SECTIONS.map((x) => (
+          <button key={x.id} className={section === x.id ? 'on' : ''} onClick={() => setSection(x.id)}>
+            {section === x.id && <motion.span layoutId="cz-pill" className="dock-pill" style={{ borderRadius: 12 }} transition={spring} />}
+            <x.icon size={17} /> {x.label}
+          </button>
+        ))}
+      </Glass>
+      <div className="cz-body" ref={bodyRef} key={section} style={{ animation: 'rise .4s var(--ease) both' }}>
+        {section === 'scenes' && <ScenesSection mobile={mobile} />}
+        {section === 'moon' && <MoonSection mobile={mobile} />}
+        {section === 'sky' && <SkySection />}
+        {section === 'ui' && <UiSection />}
+        {section === 'layout' && <LayoutSection />}
+        {section === 'perf' && <PerfSection />}
+        {section === 'data' && <DataSection />}
+      </div>
+    </div>
+  )
+}
+
+// ------------------------------------------------------------------ sections
+function ScenesSection({ mobile }) {
+  const { settings: s, update, applyScene } = useSettings()
+  const { toast } = useToast()
+  const quick = [
+    { icon: CalendarDays, title: "Tonight's real moon", sub: phaseName(phaseFromDate(new Date())), run: () => update({ moonPhaseMode: 'today' }) },
+    { icon: CalendarHeart, title: 'Moon of Feb 14, 2008', sub: 'Waxing gibbous · 57% lit', run: () => update({ moonPhaseMode: 'date', moonDate: '2008-02-14' }) },
+    { icon: Crosshair, title: s.moonX > 0.5 ? 'Move moon left' : 'Move moon right', sub: 'Swap sides', run: () => update(mobile ? { moonXMobile: 1 - s.moonXMobile } : { moonX: 1 - s.moonX }) },
+    { icon: BatteryCharging, title: s.quality === 'battery' ? 'Back to balanced' : 'Battery saver', sub: s.quality === 'battery' ? 'Smoother visuals' : '30 fps, lighter render', run: () => update({ quality: s.quality === 'battery' ? 'auto' : 'battery' }) },
+    { icon: Eye, title: s.moonVisible ? 'Hide the moon' : 'Show the moon', sub: 'Just stars & sky', run: () => update({ moonVisible: !s.moonVisible }) },
+    { icon: Zap, title: s.shooting === 'shower' ? 'Calm sky' : 'Meteor shower', sub: 'Shooting stars', run: () => update({ shooting: s.shooting === 'shower' ? 'normal' : 'shower' }) },
+  ]
+  return (
+    <>
+      <Glass className="section">
+        <h3><Sparkles size={16} /> Scenes <span className="faint" style={{ fontWeight: 400, fontSize: 13 }}>One click sets the moon, sky and colours</span></h3>
+        <div className="scenes">
+          {Object.entries(SCENES).map(([id, sc]) => (
+            <button
+              key={id}
+              className={`scene-card ${s.scene === id ? 'on' : ''}`}
+              onClick={() => (applyScene(id), toast(`${sc.name} applied`, 'success'))}
+              style={{ background: `radial-gradient(70% 80% at 80% 20%, ${sc.galaxyColor2}55, transparent 60%), radial-gradient(60% 60% at 20% 90%, ${sc.nebulaColor}44, transparent 70%), linear-gradient(${sc.skyTop}, ${sc.skyBottom})` }}
+            >
+              <MiniMoon phase={sc.moonPhaseMode === 'date' ? phaseFromDate(new Date(sc.moonDate + 'T20:00:00Z')) : sc.moonPhase} tint={sc.moonTint} />
+              <b>{sc.name}</b>
+              <small>{sc.note}</small>
+              <span className="row" style={{ gap: 4, marginTop: 6, position: 'relative' }}>
+                {[sc.c1, sc.c2, sc.c3].map((c) => <i key={c} style={{ width: 12, height: 12, borderRadius: 99, background: c, display: 'inline-block' }} />)}
+              </span>
+            </button>
+          ))}
+        </div>
+        {s.scene === 'custom' && <p className="hint" style={{ marginBottom: 0 }}>You've customised the current scene. Pick one above to start fresh.</p>}
+      </Glass>
+      <Glass className="section">
+        <h3><Zap size={16} /> Quick actions</h3>
+        <div className="quick">
+          {quick.map((q) => (
+            <button key={q.title} onClick={q.run}>
+              <span className="q-ico"><q.icon size={18} /></span>
+              <span><b>{q.title}</b><small>{q.sub}</small></span>
+            </button>
+          ))}
+        </div>
+      </Glass>
+    </>
+  )
+}
+
+function MoonSection({ mobile }) {
+  const { settings: s, update } = useSettings()
+  const phase = resolvePhase(s)
+  const pos = mobile ? { x: 'moonXMobile', y: 'moonYMobile', size: 'moonSizeMobile' } : { x: 'moonX', y: 'moonY', size: 'moonSize' }
+  const spots = [['Top left', 0.24, 0.26], ['Top right', 0.76, 0.28], ['Center', 0.5, 0.45], ['Bottom right', 0.8, 0.72]]
+  return (
+    <>
+      <Glass className="cz-group">
+        <h3>Phase</h3>
+        <Row label="Moon phase from" hint={`${phaseName(phase)} · ${Math.round(illumination(phase) * 100)}% lit`}>
+          <Seg id="pm" value={s.moonPhaseMode} onChange={(v) => update({ moonPhaseMode: v })} options={[{ value: 'date', label: 'A date' }, { value: 'today', label: 'Tonight' }, { value: 'manual', label: 'Manual' }]} />
+        </Row>
+        {s.moonPhaseMode === 'date' && (
+          <Row label="Date" hint="Any date, past or future">
+            <input type="date" className="input" style={{ width: 'auto' }} value={s.moonDate} onChange={(e) => update({ moonDate: e.target.value })} />
+            <button className="btn sm" onClick={() => update({ moonDate: '2008-02-14' })}>Feb 14, 2008</button>
+          </Row>
+        )}
+        {s.moonPhaseMode === 'manual' && <Slider k="moonPhase" label="Phase" min={0} max={0.999} step={0.005} fmt={(v) => `${Math.round(illumination(v) * 100)}%`} hint={phaseName(s.moonPhase)} />}
+        <Slider k="moonTilt" label="Terminator tilt" min={-90} max={90} step={1} fmt={(v) => `${v}°`} hint="Angle of the light" />
+      </Glass>
+      <Glass className="cz-group">
+        <h3>Placement {mobile && <span className="faint" style={{ textTransform: 'none', letterSpacing: 0 }}>(phone layout)</span>}</h3>
+        <Row label="Quick position">
+          {spots.map(([l, x, y]) => <button key={l} className="chip" onClick={() => update({ [pos.x]: x, [pos.y]: y })}>{l}</button>)}
+        </Row>
+        <Slider k={pos.size} label="Size" min={0.15} max={1.1} fmt={(v) => `${Math.round(v * 100)}%`} />
+        <Slider k={pos.x} label="Horizontal" min={0} max={1} fmt={(v) => `${Math.round(v * 100)}`} />
+        <Slider k={pos.y} label="Vertical" min={0} max={1} fmt={(v) => `${Math.round(v * 100)}`} />
+        <Toggle k="moonVisible" label="Show moon" />
+      </Glass>
+      <Glass className="cz-group">
+        <h3>Look</h3>
+        <Colors label="Moon & glow colour" keys={[['moonTint', 'Moon'], ['glowColor', 'Glow'], ['earthTint', 'Earthshine']]} />
+        <Slider k="moonExposure" label="Brightness" min={0.2} max={2} fmt={(v) => v.toFixed(2)} />
+        <Slider k="moonContrast" label="Surface contrast" min={0.6} max={1.8} fmt={(v) => v.toFixed(2)} hint="Seas vs highlands" />
+        <Slider k="moonBump" label="Crater depth" min={0} max={3} fmt={(v) => v.toFixed(1)} />
+        <Slider k="glowIntensity" label="Glow strength" min={0} max={2} fmt={(v) => v.toFixed(2)} />
+        <Slider k="glowSize" label="Glow size" min={1.3} max={5} fmt={(v) => v.toFixed(1)} />
+        <Slider k="earthshine" label="Earthshine" min={0} max={0.4} fmt={(v) => v.toFixed(2)} hint="Faint light on the dark side" />
+        <Slider k="moonRotation" label="Rotation" min={-180} max={180} step={1} fmt={(v) => `${v}°`} />
+        <Slider k="moonSpin" label="Moon rotation speed" min={0} max={6} step={0.1} fmt={(v) => (v ? `${v.toFixed(1)}°/s` : 'Off')} hint="Slowly reveals the far side" />
+        <Toggle k="libration" label="Gentle libration" hint="The slow real-life wobble" />
+      </Glass>
+    </>
+  )
+}
+
+function SkySection() {
+  return (
+    <>
+      <Glass className="cz-group">
+        <h3>Sky</h3>
+        <Colors label="Sky gradient" keys={[['skyTop', 'Top'], ['skyBottom', 'Horizon']]} />
+        <Slider k="horizonGlow" label="Horizon glow" min={0} max={1.5} fmt={(v) => v.toFixed(2)} />
+        <Slider k="skyDrift" label="Sky drift" min={0} max={4} fmt={(v) => `${v.toFixed(1)}×`} />
+        <Toggle k="parallax" label="Depth parallax" hint="Stars shift as you move the mouse" />
+      </Glass>
+      <Glass className="cz-group">
+        <h3>Galaxy & nebula</h3>
+        <Colors label="Milky Way" keys={[['galaxyColor1', 'Core'], ['galaxyColor2', 'Arms']]} />
+        <Slider k="galaxyAmount" label="Milky Way strength" min={0} max={2} fmt={(v) => v.toFixed(2)} />
+        <Slider k="galaxyTilt" label="Milky Way angle" min={-90} max={90} step={1} fmt={(v) => `${v}°`} />
+        <Slider k="galaxyOffset" label="Milky Way offset" min={-0.5} max={0.5} fmt={(v) => v.toFixed(2)} />
+        <Colors label="Nebula colour" keys={[['nebulaColor', 'Nebula']]} />
+        <Slider k="nebulaAmount" label="Nebula strength" min={0} max={2} fmt={(v) => v.toFixed(2)} />
+      </Glass>
+      <Glass className="cz-group">
+        <h3>Stars</h3>
+        <Slider k="starDensity" label="Star count" min={0.1} max={2.5} fmt={(v) => `${v.toFixed(1)}×`} />
+        <Slider k="starSize" label="Star size" min={0.4} max={2.5} fmt={(v) => `${v.toFixed(1)}×`} />
+        <Slider k="starBrightness" label="Star brightness" min={0.2} max={2.5} fmt={(v) => `${v.toFixed(1)}×`} />
+        <Slider k="starTwinkle" label="Twinkle" min={0} max={1} fmt={(v) => `${Math.round(v * 100)}%`} />
+        <Choice k="shooting" label="Shooting stars" options={[['off', 'Off'], ['rare', 'Rare'], ['normal', 'Normal'], ['shower', 'Shower']]} />
+        <Colors label="Shooting star colour" keys={[['shootColor', 'Trail']]} />
+      </Glass>
+    </>
+  )
+}
+
+function UiSection() {
+  const { settings: s, update } = useSettings()
+  return (
+    <>
+      <Glass className="cz-group">
+        <h3>Colour</h3>
+        <Colors label="Accent colours" keys={[['c1', 'Primary'], ['c2', 'Secondary'], ['c3', 'Highlight']]} />
+        <Row label="Match the sky" hint="Take accents from the galaxy & nebula">
+          <button className="btn sm" onClick={() => update({ c1: s.nebulaColor, c2: s.galaxyColor2, c3: s.galaxyColor1 })}>Match</button>
+        </Row>
+      </Glass>
+      <Glass className="cz-group">
+        <h3>Glass</h3>
+        <Slider k="blur" label="Glass blur" min={0} max={40} step={1} fmt={(v) => `${v}px`} hint="0 = solid panels (fastest)" />
+        <Slider k="glassAlpha" label="Glass tint" min={0.01} max={0.25} fmt={(v) => v.toFixed(2)} />
+        <Slider k="radius" label="Corner roundness" min={4} max={32} step={1} fmt={(v) => `${v}px`} />
+        <Choice k="cardStyle" label="Card style" options={[['glass', 'Glass'], ['solid', 'Solid'], ['outline', 'Outline'], ['minimal', 'Minimal']]} />
+        <Toggle k="cardBlur" label="Real blur on cards" hint="Prettier, heavier. Off is recommended" />
+      </Glass>
+      <Glass className="cz-group">
+        <h3>Type</h3>
+        <Row label="Font">
+          {Object.entries(FONTS).map(([k, f]) => <button key={k} className={`chip ${s.font === k ? 'on' : ''}`} style={{ fontFamily: f.css }} onClick={() => update({ font: k })}>{f.name}</button>)}
+        </Row>
+        <Slider k="uiScale" label="Text size" min={0.85} max={1.2} step={0.01} fmt={(v) => `${Math.round(v * 100)}%`} />
+      </Glass>
+    </>
+  )
+}
+
+function LayoutSection() {
+  return (
+    <Glass className="cz-group">
+      <h3>Layout</h3>
+      <Choice k="dock" label="Navigation dock" hint="Desktop" options={[['left', 'Left'], ['bottom', 'Bottom']]} />
+      <Choice k="cardSize" label="Card size" options={[['s', 'Small'], ['m', 'Medium'], ['l', 'Large']]} />
+      <Choice k="density" label="Spacing" options={[['compact', 'Compact'], ['comfy', 'Comfy'], ['spacious', 'Spacious']]} />
+      <Choice k="width" label="Content width" options={[['contained', 'Centered'], ['full', 'Full']]} />
+      <Choice k="view" label="Default repo view" options={[['grid', 'Grid'], ['list', 'List'], ['board', 'Board'], ['timeline', 'Timeline']]} />
+      <Toggle k="showHealth" label="Health dot on cards" />
+    </Glass>
+  )
+}
+
+function PerfSection() {
+  const { settings: s, update } = useSettings()
+  const [fps, setFps] = useState(0)
+  useEffect(() => {
+    const t = setInterval(() => setFps(sceneRef.current?.fps || 0), 500)
+    return () => clearInterval(t)
+  }, [])
+  return (
+    <Glass className="cz-group">
+      <h3>Performance <span className="fps" style={{ marginLeft: 8 }}>{fps} fps · {sceneRef.current?.qName || '…'}</span></h3>
+      <Choice k="quality" label="Render quality" hint="Auto picks the best for this device" options={[['auto', 'Auto'], ['battery', 'Battery'], ['balanced', 'Balanced'], ['ultra', 'Ultra']]} />
+      <Row label="Frame-rate cap" hint="Lower = cooler & longer battery">
+        <Seg id="fps" value={s.fpsCap} onChange={(v) => update({ fpsCap: v })} options={[{ value: 0, label: 'Auto' }, { value: 30, label: '30' }, { value: 60, label: '60' }, { value: 120, label: '120' }]} />
+      </Row>
+      <Slider k="motion" label="Animation speed" min={0} max={3} fmt={(v) => `${v.toFixed(1)}×`} />
+      <Toggle k="reduceMotion" label="Reduce motion" hint="Freezes the sky and turns off animations" />
+    </Glass>
+  )
+}
+
+function DataSection() {
+  const { settings: s, reset, userData, setUserData, setSettings } = useSettings()
+  const { gh, logout, scopes, demo } = useAuth()
   const { toast, confirm } = useToast()
-  const fileRef = useRef(null)
   const importRef = useRef(null)
   const [sync, setSync] = useState('')
 
-  const onImage = (e) => {
-    const f = e.target.files[0]
-    if (!f) return
-    if (f.size > 6 * 1024 * 1024) return toast('Image too large (max 6 MB)', 'error')
-    const reader = new FileReader()
-    reader.onload = () => {
-      setBgImage(reader.result)
-      update({ background: 'image' })
-    }
-    reader.readAsDataURL(f)
-  }
-
-  const exportData = () => {
-    const { ...settings } = s
-    download('repoverse-setup.json', JSON.stringify({ app: 'repoverse', version: 1, settings, userData }, null, 2))
-  }
   const applyImport = (d) => {
     if (d?.app !== 'repoverse') throw new Error('Not a RepoVerse setup file')
-    if (d.settings) setSettings({ ...DEFAULTS, ...d.settings })
+    if (d.settings) setSettings({ ...DEFAULTS, ...d.settings, version: DEFAULTS.version })
     if (d.userData) setUserData(d.userData)
   }
-  const importData = (e) => {
-    const f = e.target.files[0]
-    if (!f) return
-    f.text().then((t) => {
-      try {
-        applyImport(JSON.parse(t))
-        toast('Setup imported', 'success')
-      } catch (err) {
-        toast(err.message, 'error')
-      }
-    })
-    e.target.value = ''
-  }
-
-  // Sync via a private Gist in the user's own GitHub account (no RepoVerse server involved)
   const findGist = async () => (await gh.gists()).find((g) => g.files[GIST_FILE])
   const pushSync = async () => {
     setSync('up')
     try {
-      const content = JSON.stringify({ app: 'repoverse', version: 1, settings: s, userData }, null, 2)
+      const content = JSON.stringify({ app: 'repoverse', version: 3, settings: s, userData }, null, 2)
       const g = await findGist()
       if (g) await gh.updateGist(g.id, { files: { [GIST_FILE]: { content } } })
       else await gh.createGist({ description: 'RepoVerse settings sync (private)', public: false, files: { [GIST_FILE]: { content } } })
-      toast('Settings saved to a private Gist in your GitHub', 'success')
+      toast('Saved to a private Gist in your GitHub', 'success')
     } catch (e) {
       toast(e.message, 'error')
     } finally {
@@ -90,124 +343,52 @@ export default function Customize() {
     setSync('down')
     try {
       const g = await findGist()
-      if (!g) throw new Error('No synced settings found yet. Save from another device first.')
-      const full = await gh.gist(g.id)
-      applyImport(JSON.parse(full.files[GIST_FILE].content))
-      toast('Settings restored from your Gist', 'success')
+      if (!g) throw new Error('No synced settings yet. Save from another device first.')
+      applyImport(JSON.parse((await gh.gist(g.id)).files[GIST_FILE].content))
+      toast('Restored from your Gist', 'success')
     } catch (e) {
       toast(e.message, 'error')
     } finally {
       setSync('')
     }
   }
-
   const wipe = async () => {
-    if (await confirm({ title: 'Erase everything on this device?', body: 'Deletes your token, cached repos, themes, tags, folders and the encryption key from this browser.\nYour GitHub repositories are NOT touched.', danger: true, okLabel: 'Erase & sign out' })) logout(true)
+    if (await confirm({ title: 'Erase everything on this device?', body: 'Deletes your login, cached repos, tags, pins, theme and the encryption key from this browser.\nYour GitHub repositories are NOT touched.', danger: true, okLabel: 'Erase & sign out' })) {
+      localStorage.removeItem('rv-settings')
+      logout(true)
+    }
   }
-
-  const BGS = [
-    { value: 'aurora', label: 'Aurora' }, { value: 'mesh', label: 'Mesh' }, { value: 'orbs', label: 'Orbs' }, { value: 'image', label: 'Image' }, { value: 'solid', label: 'Solid' },
-  ]
-
   return (
-    <div className="widgets">
-      <Glass className="section widget" style={{ '--span': 12 }} liquid>
-        <h3><Palette size={16} /> Theme</h3>
-        <div className="swatches">
-          {Object.entries(THEMES).map(([k, t]) => (
-            <div key={k} className={`swatch ${s.theme === k ? 'on' : ''}`} onClick={() => update({ theme: k, bg: t.bg, c1: t.c1, c2: t.c2, c3: t.c3 })}
-              style={{ background: `radial-gradient(circle at 20% 20%, ${t.c1}, transparent 60%), radial-gradient(circle at 85% 30%, ${t.c2}, transparent 55%), radial-gradient(circle at 50% 100%, ${t.c3}, transparent 60%), ${t.bg}` }}>
-              <span style={{ textShadow: '0 1px 8px rgba(0,0,0,.6)' }}>{t.name}</span>
-            </div>
-          ))}
-        </div>
-        <div className="row wrap" style={{ gap: 18, marginTop: 18 }}>
-          {[['c1', 'Primary'], ['c2', 'Secondary'], ['c3', 'Accent'], ['bg', 'Base']].map(([k, l]) => (
-            <label key={k} className="row" style={{ gap: 8 }}>
-              <input type="color" value={s[k]} onChange={(e) => update({ [k]: e.target.value, theme: 'custom' })} />
-              <span className="muted" style={{ fontSize: 13 }}>{l}<br /><span className="mono faint" style={{ fontSize: 11 }}>{s[k]}</span></span>
-            </label>
-          ))}
-        </div>
+    <>
+      <Glass className="cz-group">
+        <h3>Backup & sync</h3>
+        <Row label="Setup file" hint="Look, layout, tags, pins">
+          <button className="btn sm" onClick={() => download('repoverse-setup.json', JSON.stringify({ app: 'repoverse', version: 3, settings: s, userData }, null, 2))}><Download size={14} /> Export</button>
+          <button className="btn sm" onClick={() => importRef.current.click()}><Upload size={14} /> Import</button>
+          <input ref={importRef} type="file" accept="application/json" hidden onChange={(e) => {
+            const f = e.target.files[0]
+            if (f) f.text().then((t) => { try { applyImport(JSON.parse(t)); toast('Imported', 'success') } catch (err) { toast(err.message, 'error') } })
+            e.target.value = ''
+          }} />
+        </Row>
+        <Row label="Sync between devices" hint="Through a private Gist in your own GitHub">
+          <button className="btn sm primary" onClick={pushSync} disabled={!!sync || demo}>{sync === 'up' ? <Spinner size={13} /> : <CloudUpload size={14} />} Save</button>
+          <button className="btn sm" onClick={pullSync} disabled={!!sync || demo}>{sync === 'down' ? <Spinner size={13} /> : <CloudDownload size={14} />} Restore</button>
+        </Row>
+        <Row label="Reset look" hint="Back to the Feb 14, 2008 scene">
+          <button className="btn sm" onClick={reset}><RotateCcw size={14} /> Reset</button>
+        </Row>
       </Glass>
-
-      <Glass className="section widget" style={{ '--span': 6 }}>
-        <h3><Layers size={16} /> Glass</h3>
-        <Slider label="Blur" k="blur" min={0} max={50} unit="px" />
-        <Slider label="Transparency" k="glassAlpha" min={0.02} max={0.3} step={0.01} />
-        <Slider label="Glow strength" k="glow" min={0} max={1} step={0.05} />
-        <Slider label="Corner radius" k="radius" min={4} max={36} unit="px" />
-        <Toggle label="Liquid refraction" k="liquid" hint="Glass bends what's behind it (Chrome / Edge)" />
-        <Toggle label="Specular light" k="specular" hint="Light follows your cursor across glass" />
-        <Toggle label="3D tilt cards" k="tilt" />
-      </Glass>
-
-      <Glass className="section widget" style={{ '--span': 6 }}>
-        <h3><ImageIcon size={16} /> Background</h3>
-        <div style={{ marginBottom: 14 }}>
-          <Seg id="bg" value={s.background} onChange={(v) => (v === 'image' && !bgImage ? fileRef.current.click() : update({ background: v }))} options={BGS} />
-        </div>
-        <div className="row" style={{ marginBottom: 10 }}>
-          <button className="btn sm" onClick={() => fileRef.current.click()}><Upload size={14} /> Upload image</button>
-          {bgImage && <button className="btn sm" onClick={() => (setBgImage(''), update({ background: 'aurora' }))}><Trash2 size={14} /> Remove image</button>}
-          <input ref={fileRef} type="file" accept="image/*" hidden onChange={onImage} />
-        </div>
-        <Toggle label="Film grain" k="grain" />
-        <Toggle label="Vignette" k="vignette" />
-        <Slider label="Animation speed" k="motion" min={0.2} max={3} step={0.1} unit="×" />
-      </Glass>
-
-      <Glass className="section widget" style={{ '--span': 6 }}>
-        <h3><Type size={16} /> Layout & type</h3>
-        <div className="field">
-          <label className="label">Font</label>
-          <div className="row wrap" style={{ gap: 8 }}>
-            {Object.entries(FONTS).map(([k, f]) => <button key={k} className={`chip ${s.font === k ? 'on' : ''}`} style={{ fontFamily: f.css }} onClick={() => update({ font: k })}>{f.name}</button>)}
-          </div>
-        </div>
-        <div className="field">
-          <label className="label">Density</label>
-          <Seg id="density" value={s.density} onChange={(v) => update({ density: v })} options={[{ value: 'compact', label: 'Compact' }, { value: 'comfy', label: 'Comfy' }, { value: 'spacious', label: 'Spacious' }]} />
-        </div>
-      </Glass>
-
-      <Glass className="section widget" style={{ '--span': 6 }}>
-        <h3><Zap size={16} /> Performance & motion</h3>
-        <div className="field">
-          <label className="label">Performance mode</label>
-          <Seg id="perf" value={s.perf} onChange={(v) => update({ perf: v })} options={[{ value: 'auto', label: 'Auto' }, { value: 'on', label: 'On' }, { value: 'off', label: 'Off' }]} />
-          <div className="hint" style={{ marginTop: 6 }}>On = no blur on cards. Auto turns it on for low-power devices.</div>
-        </div>
-        <Toggle label="Reduce motion" k="reduceMotion" hint="Stops animations and the moving background" />
-      </Glass>
-
-      <Glass className="section widget" style={{ '--span': 6 }}>
-        <h3><Sparkles size={16} /> Backup & sync</h3>
-        <p className="muted" style={{ marginTop: 0, fontSize: 13.5 }}>Your setup (theme, layout, tags, folders, pins) lives only in this browser. Move it between devices with a file, or with a private Gist in <b>your own</b> GitHub account.</p>
-        <div className="row wrap">
-          <button className="btn" onClick={exportData}><Download size={15} /> Export file</button>
-          <button className="btn" onClick={() => importRef.current.click()}><Upload size={15} /> Import file</button>
-          <input ref={importRef} type="file" accept="application/json" hidden onChange={importData} />
-        </div>
-        <div className="row wrap" style={{ marginTop: 10 }}>
-          <button className="btn primary" onClick={pushSync} disabled={!!sync}>{sync === 'up' ? <Spinner /> : <CloudUpload size={15} />} Save to Gist</button>
-          <button className="btn" onClick={pullSync} disabled={!!sync}>{sync === 'down' ? <Spinner /> : <CloudDownload size={15} />} Restore from Gist</button>
-        </div>
-        <div className="divider" />
-        <button className="btn" onClick={reset}><RotateCcw size={15} /> Reset look to defaults</button>
-      </Glass>
-
-      <Glass className="section widget" style={{ '--span': 6 }}>
-        <h3><ShieldCheck size={16} /> Privacy & security</h3>
-        <ul className="muted" style={{ margin: '0 0 14px', paddingLeft: 18, fontSize: 13.5, lineHeight: 1.8 }}>
-          <li>No RepoVerse server or database. Your browser talks directly to GitHub.</li>
-          <li>Token and data are encrypted (AES-256-GCM) with a non-exportable key.</li>
-          <li>No analytics, trackers or third-party scripts. A strict Content Security Policy is applied.</li>
-          <li>Granted scopes: <span className="mono" style={{ fontSize: 12 }}>{(scopes.length ? scopes : ['fine-grained token']).join(', ')}</span></li>
-          {scopes.length > 0 && SCOPES.some((x) => !scopes.includes(x)) && <li style={{ color: '#fbbf24' }}>Missing: {SCOPES.filter((x) => !scopes.includes(x)).join(', ')}. Some features may not work.</li>}
+      <Glass className="cz-group">
+        <h3>Privacy</h3>
+        <ul className="muted" style={{ margin: '8px 0 14px', paddingLeft: 18, fontSize: 13.5, lineHeight: 1.8 }}>
+          <li>No database: your browser talks directly to GitHub.</li>
+          <li>Login and data encrypted (AES-256-GCM) with a key that can't be exported.</li>
+          <li>No analytics, trackers or third-party scripts.</li>
+          <li>Permissions: <span className="mono" style={{ fontSize: 12 }}>{(scopes.length ? scopes : SCOPES).join(', ')}</span></li>
         </ul>
-        <button className="btn danger" onClick={wipe}><Trash2 size={15} /> Erase all data on this device</button>
+        <button className="btn danger sm" onClick={wipe} style={{ marginBottom: 14 }}><Trash2 size={14} /> Erase all data on this device</button>
       </Glass>
-    </div>
+    </>
   )
 }

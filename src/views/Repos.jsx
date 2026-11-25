@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Search, Star, GitFork, Lock, Globe, LayoutGrid, List, Columns3, CalendarClock, Pin, PinOff, CheckSquare, Tag, Archive, ArchiveRestore,
-  Eye, EyeOff, X, Plus, Code2, ExternalLink, FolderPlus, Trash2, BookMarked, Activity, Sparkles, FolderUp, MonitorPlay,
+  Eye, EyeOff, X, Plus, Code2, ExternalLink, FolderPlus, Trash2, BookMarked, FolderUp, MonitorPlay, Moon, Copy,
 } from 'lucide-react'
 import { Glass, Modal, Ring, Seg, Spinner, TiltCard, useToast } from '../components/ui'
 import { useAuth } from '../lib/auth'
@@ -20,45 +20,39 @@ function greeting() {
   return h < 5 ? 'Up late' : h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'
 }
 
-function Hero({ repos }) {
+function Hero({ repos, mobile }) {
   const { user } = useAuth()
   const first = (user.name || user.login).split(' ')[0]
   const stars = repos.reduce((n, r) => n + r.stargazers_count, 0)
   const sites = repos.filter((r) => siteUrl(r)).length
-  const avg = repos.length ? Math.round(repos.reduce((n, r) => n + health(r).score, 0) / repos.length) : 0
   const recent = repos.filter((r) => Date.now() - new Date(r.pushed_at) < 7 * 86400000).length
-  const stats = [
-    [BookMarked, 'Repos', repos.length],
-    [Star, 'Stars', fmt(stars)],
-    [Globe, 'Live sites', sites],
-    [Activity, 'Avg health', avg + '%'],
-  ]
+  if (mobile)
+    return (
+      <div className="m-hero">
+        <div className="eyebrow"><Moon size={12} /> {greeting()}</div>
+        <h2>{first}</h2>
+        <p>{repos.length} repos · {fmt(stars)} stars · {sites} live</p>
+      </div>
+    )
   return (
-    <Glass className="hero" liquid>
-      <div className="hero-glow a" />
-      <div className="hero-glow b" />
-      <div className="grow" style={{ minWidth: 280 }}>
-        <div className="hero-eyebrow"><Sparkles size={13} /> {greeting()}, {first}</div>
-        <h2>Your universe of <span className="grad-text">{repos.length} repositories</span></h2>
-        <p>{recent ? `${recent} pushed this week. ` : ''}Everything you own, in one place. Edit, preview and ship from here.</p>
-        <div className="row wrap" style={{ marginTop: 16 }}>
-          <button className="btn primary" onClick={() => go('push')}><FolderUp size={16} /> Push a folder</button>
-          <button className="btn" onClick={() => go('wall')}><MonitorPlay size={16} /> Preview wall</button>
-        </div>
-      </div>
+    <section className="hero">
+      <div className="eyebrow"><Moon size={13} /> {greeting()}</div>
+      <h1>Hello, <span className="grad-text">{first}</span>.</h1>
+      <p>{recent ? `You pushed to ${recent} ${recent === 1 ? 'repo' : 'repos'} this week. ` : ''}Your whole GitHub, under one moon.</p>
       <div className="hero-stats">
-        {stats.map(([I, k, v]) => (
-          <div key={k} className="hero-stat">
-            <span><I size={11} /> {k}</span>
-            <b>{v}</b>
-          </div>
-        ))}
+        <span className="hero-stat"><BookMarked size={13} /><b>{repos.length}</b> repos</span>
+        <span className="hero-stat"><Star size={13} /><b>{fmt(stars)}</b> stars</span>
+        <span className="hero-stat"><Globe size={13} /><b>{sites}</b> live sites</span>
       </div>
-    </Glass>
+      <div className="hero-actions">
+        <button className="btn primary" onClick={() => go('push')}><FolderUp size={16} /> Push a folder</button>
+        <button className="glass btn" onClick={() => go('wall')}><MonitorPlay size={16} /> Preview wall</button>
+      </div>
+    </section>
   )
 }
 
-export default function Repos() {
+export default function Repos({ mobile }) {
   const { repos, reposLoading, gh, patchRepo } = useAuth()
   const { settings, update, userData, setUserData } = useSettings()
   const { toast, confirm } = useToast()
@@ -170,16 +164,66 @@ export default function Repos() {
     archived: repos.filter((r) => r.archived).length,
   }), [repos, userData.pins])
 
+  if (mobile)
+    return (
+      <div>
+        {repos.length > 0 && <Hero repos={repos} mobile />}
+        <div className="m-search">
+          <div className="search">
+            <Search size={16} />
+            <input className="input glass" style={{ height: 46, borderRadius: 16 }} placeholder={`Search ${repos.length} repos`} value={q} onChange={(e) => setQ(e.target.value)} />
+          </div>
+        </div>
+        <div className="filters">
+          {FILTERS.map(([v, l]) => (
+            <button key={v} className={`chip ${filter === v ? 'on' : ''}`} onClick={() => setFilter(v)}>{l}<span className="n">{counts[v]}</span></button>
+          ))}
+        </div>
+        {reposLoading && !repos.length ? (
+          <div className="m-list">{Array.from({ length: 8 }, (_, i) => <div key={i} className="shimmer" style={{ height: 66 }} />)}</div>
+        ) : !list.length ? (
+          <div className="empty"><Search size={26} /><div>No repositories match.</div></div>
+        ) : (
+          <div className="m-list">
+            {list.map((r, i) => {
+              const accent = r.language ? langColor(r.language) : 'var(--c1)'
+              const pinned = userData.pins.includes(r.full_name)
+              return (
+                <div key={r.id} className="m-row" style={{ '--i': i, '--accent': accent }} onClick={() => open(r)}>
+                  <div className="monogram">{initials(r.name)}</div>
+                  <div className="grow">
+                    <div className="row" style={{ gap: 6 }}>
+                      <span className="name">{r.name}</span>
+                      {r.private && <Lock size={12} className="faint" />}
+                    </div>
+                    <div className="desc">{r.description || (r.language ? r.language : 'No description')}</div>
+                    <div className="meta" style={{ marginTop: 3, gap: 10 }}>
+                      {r.language && <span><i className="lang-dot" style={{ background: accent }} />{r.language}</span>}
+                      <span><Star size={12} />{fmt(r.stargazers_count)}</span>
+                      <span>{timeAgo(r.pushed_at)}</span>
+                    </div>
+                  </div>
+                  <button className="btn ghost icon" aria-label={pinned ? 'Unpin' : 'Pin'} onClick={(e) => (e.stopPropagation(), togglePin(r.full_name))} style={pinned ? { color: 'var(--c3)' } : { color: 'var(--text-3)' }}>
+                    <Pin size={17} fill={pinned ? 'currentColor' : 'none'} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    )
+
   return (
     <div>
       {repos.length > 0 && <Hero repos={repos} />}
-      <Glass className="toolbar" lit={false}>
+      <Glass className="toolbar">
         <div className="search">
           <Search size={16} />
           <input className="input" placeholder={`Search ${repos.length} repositories…`} value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <button className="btn" onClick={() => setCodeSearch(true)} title="Search inside the code of all your repos">
-          <Code2 size={16} /> Code search
+        <button className="btn ghost icon" onClick={() => setCodeSearch(true)} title="Search inside the code of all your repos" aria-label="Code search">
+          <Code2 size={17} />
         </button>
         <select className="select" style={{ width: 'auto' }} value={lang} onChange={(e) => setLang(e.target.value)} aria-label="Language">
           <option value="">All languages</option>
@@ -201,17 +245,16 @@ export default function Repos() {
         <Seg id="view" value={settings.view} onChange={(v) => update({ view: v })} options={viewOptions} />
       </Glass>
 
-      <div className="row wrap" style={{ marginBottom: 16, gap: 8 }}>
+      <div className="filters">
         {FILTERS.map(([v, l]) => (
           <button key={v} className={`chip ${filter === v ? 'on' : ''}`} onClick={() => setFilter(v)}>{l}<span className="n">{counts[v]}</span></button>
         ))}
-        <span className="faint" style={{ marginLeft: 6, fontSize: 13 }}>{list.length} shown</span>
       </div>
 
       {reposLoading && !repos.length ? (
-        <div className="grid">{Array.from({ length: 9 }, (_, i) => <div key={i} className="glass shimmer" style={{ height: 190 }} />)}</div>
+        <div className="grid">{Array.from({ length: 9 }, (_, i) => <div key={i} className="shimmer" style={{ height: 170 }} />)}</div>
       ) : !list.length ? (
-        <Glass className="empty"><Search size={28} /><div>No repositories match.</div></Glass>
+        <div className="empty"><Search size={28} /><div>No repositories match.</div></div>
       ) : settings.view === 'list' ? (
         <ListView list={list} open={open} selecting={selecting} selected={selected} userData={userData} togglePin={togglePin} />
       ) : settings.view === 'board' ? (
@@ -227,7 +270,7 @@ export default function Repos() {
       )}
 
       {selecting && (
-        <Glass className="bulk-bar glass-strong" lit={false}>
+        <Glass className="bulk-bar glass-strong">
           <b>{selected.size} selected</b>
           <button className="btn sm" onClick={() => setSelected(new Set(list.map((r) => r.full_name)))}>Select all</button>
           <button className="btn sm" onClick={() => setSelected(new Set())}>Clear</button>
@@ -258,54 +301,45 @@ export const initials = (name) =>
   name.split(/[-_.\s]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join('').toUpperCase() || name.slice(0, 2).toUpperCase()
 
 function RepoCard({ r, i, open, selecting, selected, pinned, tags = [], togglePin, setTagEditor }) {
+  const { settings } = useSettings()
   const h = health(r)
   const site = siteUrl(r)
   const accent = r.language ? langColor(r.language) : 'var(--c1)'
   return (
-    <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(i, 18) * 0.025, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>
-      <TiltCard onClick={() => open(r)} style={{ height: '100%', '--accent': accent, outline: selected ? '2px solid var(--c2)' : 'none' }}>
-        <div className="card-glow" />
-        <div className="card-head">
-          {selecting && <input type="checkbox" checked={selected} readOnly />}
-          <div className="monogram">{initials(r.name)}</div>
-          <div className="grow">
-            <div className="card-title">
-              <span className="name">{r.name}</span>
-              {pinned && <Pin size={13} fill="currentColor" className="pin-flag" />}
-            </div>
-            <div className="card-sub">
-              {r.private ? <Lock size={11} /> : <Globe size={11} />}
-              {r.private ? 'Private' : 'Public'}
-              {r.fork && ' · Fork'}
-              {r.archived && ' · Archived'}
-              <span>·</span> {timeAgo(r.pushed_at)}
-            </div>
+    <TiltCard className={`glass ${selected ? 'sel' : ''}`} onClick={() => open(r)} style={{ '--accent': accent, '--i': i }}>
+      <div className="card-head">
+        {selecting && <input type="checkbox" checked={selected} readOnly aria-label="Select" />}
+        <div className="monogram">{initials(r.name)}</div>
+        <div className="grow">
+          <div className="card-title">
+            <span className="name">{r.name}</span>
+            {pinned && <Pin size={12} fill="currentColor" className="pin-flag" />}
           </div>
-          <Ring value={h.score} color={healthColor(h.score)} />
-        </div>
-        <div className="card-desc">{r.description || <span className="faint">No description yet</span>}</div>
-        {(tags.length > 0 || (r.topics || []).length > 0) && (
-          <div className="row wrap" style={{ gap: 6 }}>
-            {tags.map((t) => <span key={t} className="tag local">#{t}</span>)}
-            {(r.topics || []).slice(0, 3).map((t) => <span key={t} className="tag">{t}</span>)}
-          </div>
-        )}
-        <div className="card-foot">
-          <div className="meta">
-            {r.language && <span><i className="lang-dot" style={{ background: accent, color: accent }} />{r.language}</span>}
-            <span><Star size={13} />{fmt(r.stargazers_count)}</span>
-            <span><GitFork size={13} />{fmt(r.forks_count)}</span>
-          </div>
-          <div className="card-actions" onClick={(e) => e.stopPropagation()}>
-            {site && <a className="btn ghost sm icon" href={site} target="_blank" rel="noopener noreferrer" title="Open site" aria-label="Open site"><ExternalLink size={14} /></a>}
-            <button className="btn ghost sm icon" title="Local tags" aria-label="Local tags" onClick={() => setTagEditor(r.full_name)}><Tag size={14} /></button>
-            <button className="btn ghost sm icon" title={pinned ? 'Unpin' : 'Pin'} aria-label={pinned ? 'Unpin' : 'Pin'} onClick={() => togglePin(r.full_name)} style={pinned ? { color: 'var(--c2)' } : undefined}>
-              <Pin size={14} fill={pinned ? 'currentColor' : 'none'} />
-            </button>
+          <div className="card-sub">
+            {r.private ? <Lock size={11} /> : <Globe size={11} />} {r.private ? 'Private' : 'Public'}
+            {r.fork && ' · Fork'}{r.archived && ' · Archived'} · {timeAgo(r.pushed_at)}
           </div>
         </div>
-      </TiltCard>
-    </motion.div>
+        {settings.showHealth && <span className="health-dot" style={{ color: healthColor(h.score) }} title={`Health ${h.score}%`} />}
+      </div>
+      <p className="card-desc">{r.description || <span className="faint">No description yet</span>}</p>
+      {tags.length > 0 && <div className="row wrap" style={{ gap: 6 }}>{tags.map((t) => <span key={t} className="tag local">#{t}</span>)}</div>}
+      <div className="card-foot">
+        <div className="meta">
+          {r.language && <span><i className="lang-dot" style={{ background: accent }} />{r.language}</span>}
+          <span><Star size={13} />{fmt(r.stargazers_count)}</span>
+          {r.forks_count > 0 && <span><GitFork size={13} />{fmt(r.forks_count)}</span>}
+        </div>
+        <div className="card-actions" onClick={(e) => e.stopPropagation()}>
+          {site && <a className="btn ghost sm icon" href={site} target="_blank" rel="noopener noreferrer" title="Open site" aria-label="Open site"><ExternalLink size={14} /></a>}
+          <button className="btn ghost sm icon" title="Copy clone URL" aria-label="Copy clone URL" onClick={() => navigator.clipboard.writeText(r.clone_url)}><Copy size={14} /></button>
+          <button className="btn ghost sm icon" title="Local tags" aria-label="Local tags" onClick={() => setTagEditor(r.full_name)}><Tag size={14} /></button>
+          <button className="btn ghost sm icon" title={pinned ? 'Unpin' : 'Pin'} aria-label={pinned ? 'Unpin' : 'Pin'} onClick={() => togglePin(r.full_name)} style={pinned ? { color: 'var(--c3)' } : undefined}>
+            <Pin size={14} fill={pinned ? 'currentColor' : 'none'} />
+          </button>
+        </div>
+      </div>
+    </TiltCard>
   )
 }
 
