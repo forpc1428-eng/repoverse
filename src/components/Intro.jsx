@@ -185,16 +185,6 @@ export default function Intro() {
         ctx.arc(hx, hy, 1.8, 0, Math.PI * 2)
         ctx.fill()
       }
-      // tagline
-      const tagA = Math.max(0, Math.min(1, (el - 2.1) / 0.6)) * (1 - dissolve)
-      if (tagA) {
-        ctx.globalCompositeOperation = 'source-over'
-        ctx.fillStyle = `rgba(236,236,255,${0.55 * tagA})`
-        ctx.font = `500 ${Math.max(12, small * 0.42)}px ${font}`
-        ctx.textAlign = 'center'
-        ctx.letterSpacing = '6px'
-        ctx.fillText('VIBING  ·  REPOVERSE', W / 2, H / 2 + big * 0.95)
-      }
       ctx.globalCompositeOperation = 'source-over'
       if (el < total) raf = requestAnimationFrame(frame)
       else setShow(false)
