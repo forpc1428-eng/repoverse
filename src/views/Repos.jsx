@@ -77,6 +77,7 @@ export default function Repos({ mobile }) {
       if (filter === 'private' && !r.private) return false
       if (filter === 'sites' && !siteUrl(r)) return false
       if (filter === 'forks' && !r.fork) return false
+      if (settings.fForks === false && r.fork && filter !== 'forks') return false
       if (filter === 'archived' ? !r.archived : filter !== 'all' && filter !== 'pinned' && r.archived) return false
       if (lang && r.language !== lang) return false
       if (tagFilter && !(userData.tags[r.full_name] || []).includes(tagFilter)) return false
@@ -97,7 +98,7 @@ export default function Repos({ mobile }) {
     l = [...l].sort(by)
     // pinned always first
     return [...l.filter((r) => userData.pins.includes(r.full_name)), ...l.filter((r) => !userData.pins.includes(r.full_name))]
-  }, [repos, q, filter, lang, tagFilter, settings.sort, userData])
+  }, [repos, q, filter, lang, tagFilter, settings.sort, settings.fForks, userData])
 
   const togglePin = (full) =>
     setUserData((u) => ({ ...u, pins: u.pins.includes(full) ? u.pins.filter((p) => p !== full) : [full, ...u.pins] }))
@@ -150,9 +151,10 @@ export default function Repos({ mobile }) {
   const viewOptions = [
     { value: 'grid', icon: <LayoutGrid size={15} />, title: 'Grid' },
     { value: 'list', icon: <List size={15} />, title: 'List' },
-    { value: 'board', icon: <Columns3 size={15} />, title: 'Board' },
-    { value: 'timeline', icon: <CalendarClock size={15} />, title: 'Timeline' },
-  ]
+    settings.fBoard !== false && { value: 'board', icon: <Columns3 size={15} />, title: 'Board' },
+    settings.fTimeline !== false && { value: 'timeline', icon: <CalendarClock size={15} />, title: 'Timeline' },
+  ].filter(Boolean)
+  const view = viewOptions.some((o) => o.value === settings.view) ? settings.view : 'grid'
 
   const counts = useMemo(() => ({
     all: repos.filter((r) => !r.archived).length,
@@ -216,15 +218,17 @@ export default function Repos({ mobile }) {
 
   return (
     <div>
-      {repos.length > 0 && <Hero repos={repos} />}
+      {repos.length > 0 && settings.fHero !== false && <Hero repos={repos} />}
       <Glass className="toolbar">
         <div className="search">
           <Search size={16} />
           <input className="input" placeholder={`Search ${repos.length} repositories…`} value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <button className="btn ghost icon" onClick={() => setCodeSearch(true)} title="Search inside the code of all your repos" aria-label="Code search">
-          <Code2 size={17} />
-        </button>
+        {settings.fCodeSearch !== false && (
+          <button className="btn ghost icon" onClick={() => setCodeSearch(true)} title="Search inside the code of all your repos" aria-label="Code search">
+            <Code2 size={17} />
+          </button>
+        )}
         <select className="select" style={{ width: 'auto' }} value={lang} onChange={(e) => setLang(e.target.value)} aria-label="Language">
           <option value="">All languages</option>
           {langs.map((l) => <option key={l}>{l}</option>)}
@@ -239,10 +243,12 @@ export default function Repos({ mobile }) {
           {SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
         <div className="grow" />
-        <button className={`btn ${selecting ? 'primary' : ''}`} onClick={() => (setSelecting(!selecting), setSelected(new Set()))}>
-          <CheckSquare size={16} /> {selecting ? 'Done' : 'Select'}
-        </button>
-        <Seg id="view" value={settings.view} onChange={(v) => update({ view: v })} options={viewOptions} />
+        {settings.fBulk !== false && (
+          <button className={`btn ${selecting ? 'primary' : ''}`} onClick={() => (setSelecting(!selecting), setSelected(new Set()))}>
+            <CheckSquare size={16} /> {selecting ? 'Done' : 'Select'}
+          </button>
+        )}
+        <Seg id="view" value={view} onChange={(v) => update({ view: v })} options={viewOptions} />
       </Glass>
 
       <div className="filters">
@@ -255,11 +261,11 @@ export default function Repos({ mobile }) {
         <div className="grid">{Array.from({ length: 9 }, (_, i) => <div key={i} className="shimmer" style={{ height: 170 }} />)}</div>
       ) : !list.length ? (
         <div className="empty"><Search size={28} /><div>No repositories match.</div></div>
-      ) : settings.view === 'list' ? (
+      ) : view === 'list' ? (
         <ListView list={list} open={open} selecting={selecting} selected={selected} userData={userData} togglePin={togglePin} />
-      ) : settings.view === 'board' ? (
+      ) : view === 'board' ? (
         <Board list={list} open={open} />
-      ) : settings.view === 'timeline' ? (
+      ) : view === 'timeline' ? (
         <Timeline list={list} open={open} selecting={selecting} selected={selected} userData={userData} togglePin={togglePin} setTagEditor={setTagEditor} />
       ) : (
         <div className="grid">

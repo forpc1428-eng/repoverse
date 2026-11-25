@@ -199,7 +199,10 @@ void main(){
 export const MOON_FRAG = /* glsl */ `
 #define PI 3.14159265359
 varying vec3 vPos;
-uniform sampler2D uSurf;
+uniform sampler2D uSurf;       // procedural fallback (R albedo, G height)
+uniform sampler2D uColorMap;   // NASA LRO colour map
+uniform sampler2D uNormalMap;  // normals from NASA LOLA elevation
+uniform float uMode;           // 1 = NASA maps, 0 = procedural
 uniform vec2 uTexel;
 uniform vec3 uSun, uView, uTint, uEarthTint;
 uniform float uEarthshine, uExposure, uBump, uReady, uContrast;
@@ -212,22 +215,34 @@ void main(){
   float uA = lon / (2.0 * PI) + 0.5;
   float uB = fract(uA + 0.5) - 0.5;
   vec2 uv = vec2(fwidth(uA) <= fwidth(uB) + 1e-6 ? uA : uB, lat / PI + 0.5);
-  vec4 s = texture2D(uSurf, uv);
-  float hE = texture2D(uSurf, uv + vec2(uTexel.x, 0.0)).g - texture2D(uSurf, uv - vec2(uTexel.x, 0.0)).g;
-  float hN = texture2D(uSurf, uv + vec2(0.0, uTexel.y)).g - texture2D(uSurf, uv - vec2(0.0, uTexel.y)).g;
   vec3 east = normalize(vec3(n.z, 0.0, -n.x) + 1e-5);
   vec3 north = cross(n, east);
-  float cl = max(cos(lat), 0.2);
-  vec3 pn = normalize(n - uBump * (hE / cl * east + hN * north));
+
+  vec3 albedo;
+  vec3 pn;
+  if (uMode > 0.5) {
+    albedo = lin(texture2D(uColorMap, uv).rgb) * 1.55;
+    vec3 tn = texture2D(uNormalMap, uv).xyz * 2.0 - 1.0;
+    tn.xy *= uBump;
+    tn = normalize(tn);
+    pn = normalize(east * tn.x + north * tn.y + n * tn.z);
+  } else {
+    vec4 s = texture2D(uSurf, uv);
+    float hE = texture2D(uSurf, uv + vec2(uTexel.x, 0.0)).g - texture2D(uSurf, uv - vec2(uTexel.x, 0.0)).g;
+    float hN = texture2D(uSurf, uv + vec2(0.0, uTexel.y)).g - texture2D(uSurf, uv - vec2(0.0, uTexel.y)).g;
+    float cl = max(cos(lat), 0.2);
+    pn = normalize(n - uBump * 3.0 * (hE / cl * east + hN * north));
+    albedo = vec3(s.r);
+  }
+  albedo = pow(albedo, vec3(uContrast));
 
   float mu0 = dot(pn, uSun);
   float mu = max(dot(pn, uView), 0.0);
   float lambert = max(mu0, 0.0);
-  float ls = mu0 > 0.0 ? mu0 / (mu0 + mu + 1e-3) : 0.0;   // Lommel–Seeliger: the flat look of the real moon
+  float ls = mu0 > 0.0 ? mu0 / (mu0 + mu + 1e-3) : 0.0;   // Lommel-Seeliger: the flat look of the real moon
   float light = mix(lambert, ls * 1.7, 0.6);
-  light *= smoothstep(-0.05, 0.10, dot(n, uSun));          // soft terminator
+  light *= smoothstep(-0.04, 0.08, dot(n, uSun));          // soft terminator
 
-  float albedo = pow(s.r, uContrast);
   vec3 col = lin(uTint) * albedo * light * uExposure;
   float night = 1.0 - smoothstep(-0.12, 0.08, dot(n, uSun));
   col += lin(uEarthTint) * albedo * uEarthshine * night * (0.35 + 0.65 * max(dot(n, uView), 0.0));

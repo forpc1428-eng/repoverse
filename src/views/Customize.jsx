@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Sparkles, Moon, Stars, LayoutPanelLeft, Gauge, ShieldCheck, Palette, CalendarHeart, CalendarDays, Crosshair, BatteryCharging, Zap, Download, Upload,
-  CloudUpload, CloudDownload, RotateCcw, Trash2, Eye,
+  CloudUpload, CloudDownload, RotateCcw, Trash2, Eye, ToggleRight, Users, Plus, Check, LogOut,
 } from 'lucide-react'
 import { Glass, Seg, Spinner, Switch, spring, useToast } from '../components/ui'
 import { sceneRef } from '../components/Background'
@@ -18,6 +18,8 @@ const SECTIONS = [
   { id: 'sky', label: 'Sky & stars', icon: Stars },
   { id: 'ui', label: 'Interface', icon: Palette },
   { id: 'layout', label: 'Layout', icon: LayoutPanelLeft },
+  { id: 'features', label: 'Features', icon: ToggleRight },
+  { id: 'accounts', label: 'Accounts', icon: Users },
   { id: 'perf', label: 'Performance', icon: Gauge },
   { id: 'data', label: 'Backup & privacy', icon: ShieldCheck },
 ]
@@ -111,6 +113,8 @@ export default function Customize() {
         {section === 'sky' && <SkySection />}
         {section === 'ui' && <UiSection />}
         {section === 'layout' && <LayoutSection />}
+        {section === 'features' && <FeaturesSection />}
+        {section === 'accounts' && <AccountsSection />}
         {section === 'perf' && <PerfSection />}
         {section === 'data' && <DataSection />}
       </div>
@@ -288,6 +292,73 @@ function LayoutSection() {
       <Choice k="width" label="Content width" options={[['contained', 'Centered'], ['full', 'Full']]} />
       <Choice k="view" label="Default repo view" options={[['grid', 'Grid'], ['list', 'List'], ['board', 'Board'], ['timeline', 'Timeline']]} />
       <Toggle k="showHealth" label="Health dot on cards" />
+    </Glass>
+  )
+}
+
+function FeaturesSection() {
+  const { update } = useSettings()
+  const all = (v) => update({ fWall: v, fPush: v, fInsights: v, fCodeSearch: v, fBulk: v, fBoard: v, fTimeline: v, fPalette: v, fShortcuts: v, fLivePreviews: v, fHero: v, fForks: true, fScene: true, fToasts: true })
+  return (
+    <>
+      <Glass className="cz-group">
+        <h3>Pages</h3>
+        <Toggle k="fWall" label="Preview Wall" hint="Live previews of all your sites" />
+        <Toggle k="fPush" label="Push Folder" hint="Upload a folder as a new repo" />
+        <Toggle k="fInsights" label="Insights" hint="Stats, heatmap, traffic" />
+      </Glass>
+      <Glass className="cz-group">
+        <h3>Repositories</h3>
+        <Toggle k="fHero" label="Greeting & stats" hint="The big hello at the top" />
+        <Toggle k="fCodeSearch" label="Code search" hint="Search inside all your code" />
+        <Toggle k="fBulk" label="Bulk actions" hint="Select many repos at once" />
+        <Toggle k="fBoard" label="Board view" />
+        <Toggle k="fTimeline" label="Timeline view" />
+        <Toggle k="fForks" label="Show forks" hint="Off hides forks unless you filter for them" />
+        <Toggle k="fLivePreviews" label="Live site previews" hint="Off uses lightweight snapshots" />
+        <Choice k="autoRefresh" label="Auto-refresh repos" hint="Re-sync with GitHub in the background" options={[[0, 'Off'], [5, '5 min'], [15, '15 min'], [60, '1 hour']]} />
+      </Glass>
+      <Glass className="cz-group">
+        <h3>App</h3>
+        <Toggle k="fScene" label="3D moon & sky" hint="Off = simple gradient, lightest on battery" />
+        <Toggle k="fPalette" label="Command palette" hint="Ctrl K to jump anywhere" />
+        <Toggle k="fShortcuts" label="Keyboard shortcuts" hint="Alt + number switches pages" />
+        <Toggle k="fToasts" label="Notifications" hint="Errors always show" />
+        <Row label="Quick set">
+          <button className="btn sm" onClick={() => all(true)}>Everything on</button>
+          <button className="btn sm" onClick={() => all(false)}>Minimal</button>
+        </Row>
+      </Glass>
+    </>
+  )
+}
+
+function AccountsSection() {
+  const { user, accounts, switchAccount, addAccount, signOut, demo } = useAuth()
+  const { toast, confirm } = useToast()
+  return (
+    <Glass className="cz-group">
+      <h3>Signed-in accounts</h3>
+      {(demo ? [user] : accounts).map((a) => (
+        <Row key={a.login} label={<span className="row" style={{ gap: 10 }}><img className="avatar" src={a.avatar_url} alt="" />{a.name || a.login}</span>} hint={`@${a.login}`}>
+          <div className="grow" />
+          {a.login === user?.login ? (
+            <span className="tag" style={{ color: '#6ee7b7' }}><Check size={12} /> Active</span>
+          ) : (
+            <button className="btn sm primary" onClick={() => switchAccount(a.login).catch((e) => toast(e.message, 'error'))}>Switch</button>
+          )}
+          {!demo && (
+            <button className="btn sm" onClick={async () => (await confirm({ title: `Sign out @${a.login}?`, body: 'Other accounts stay signed in.', okLabel: 'Sign out', danger: true })) && signOut(a.login)}>
+              <LogOut size={14} /> Sign out
+            </button>
+          )}
+        </Row>
+      ))}
+      {!demo && (
+        <Row label="Add an account" hint="GitHub shows its account picker">
+          <button className="btn sm primary" onClick={() => addAccount().catch((e) => toast(e.message, 'error'))}><Plus size={14} /> Add another account</button>
+        </Row>
+      )}
     </Glass>
   )
 }

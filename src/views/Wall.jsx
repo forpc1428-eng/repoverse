@@ -106,7 +106,7 @@ export default function Wall() {
       <div className="wall" style={{ '--wall-min': minByDevice + 'px' }}>
         {sites.map((s, i) => (
           <motion.div key={s.repo.id} initial={{ opacity: 0, y: 20, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: Math.min(i, 12) * 0.04, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>
-            <SiteCard s={s} st={status[s.url]} device={device} mode={settings.wallMode} onFull={() => setFull(s)} />
+            <SiteCard s={s} st={status[s.url]} device={device} mode={settings.fLivePreviews === false ? 'snapshot' : settings.wallMode} onFull={() => setFull(s)} />
           </motion.div>
         ))}
       </div>

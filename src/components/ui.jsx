@@ -98,6 +98,7 @@ export function ToastProvider({ children }) {
   const [confirmState, setConfirmState] = useState(null)
   const [typed, setTyped] = useState('')
   const toast = useCallback((msg, type = 'info') => {
+    if (type !== 'error' && localStorage.getItem('rv-settings')?.includes('"fToasts":false')) return
     const id = Math.random()
     setToasts((t) => [...t, { id, msg, type }])
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), type === 'error' ? 7000 : 4000)

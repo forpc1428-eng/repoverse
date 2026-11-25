@@ -97,13 +97,17 @@ export const DEFAULTS = {
   moonVisible: true, moonPhase: 0.27,
   moonX: 0.79, moonY: 0.27, moonSize: 0.42,
   moonXMobile: 0.74, moonYMobile: 0.13, moonSizeMobile: 0.42,
-  moonBump: 1.4, moonTilt: -18, moonRotation: 0, libration: true, moonSpin: 0.6,
+  moonBump: 1, moonTilt: -18, moonRotation: 0, libration: true, moonSpin: 0,
   // sky
   starDensity: 1, starSize: 0.9, starBrightness: 1.1, starTwinkle: 0.6, shooting: 'normal', skyDrift: 1, parallax: true,
   // interface
   blur: 20, glassAlpha: 0.07, radius: 20, cardStyle: 'glass', cardBlur: false, font: 'system', uiScale: 1,
   // layout
   dock: 'left', cardSize: 'm', density: 'comfy', width: 'contained', view: 'grid', sort: 'pushed', showHealth: true,
+  // features (Settings → Features)
+  fWall: true, fPush: true, fInsights: true, fCodeSearch: true, fBulk: true, fBoard: true, fTimeline: true,
+  fPalette: true, fShortcuts: true, fLivePreviews: true, fHero: true, fForks: true, fScene: true, fToasts: true,
+  autoRefresh: 0,
   // performance
   quality: 'auto', fpsCap: 0, reduceMotion: false, motion: 1,
   wallMin: 380, wallMode: 'live',

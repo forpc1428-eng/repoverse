@@ -14,6 +14,8 @@ import Wall from './views/Wall'
 import Push from './views/Push'
 import Insights from './views/Insights'
 import Customize from './views/Customize'
+import AccountMenu from './components/AccountMenu'
+import { useSettings } from './lib/settings'
 
 export const NAV = [
   { id: 'repos', label: 'Repositories', short: 'Repos', icon: LayoutGrid, sub: 'Everything you own on GitHub' },
@@ -47,37 +49,62 @@ export default function App() {
   )
 }
 
+const FEATURE_OF = { wall: 'fWall', push: 'fPush', insights: 'fInsights' }
+function useNav() {
+  const { settings } = useSettings()
+  return NAV.filter((n) => !FEATURE_OF[n.id] || settings[FEATURE_OF[n.id]] !== false)
+}
+
 function usePage() {
   const route = useRoute()
-  const page = NAV.some((n) => n.id === route.page) || route.page === 'repo' ? route.page : 'repos'
-  return { route, page, active: page === 'repo' ? 'repos' : page }
+  const nav = useNav()
+  const page = nav.some((n) => n.id === route.page) || route.page === 'repo' ? route.page : 'repos'
+  return { route, page, active: page === 'repo' ? 'repos' : page, nav }
 }
 
 function useShortcuts(setPalette) {
+  const { settings } = useSettings()
+  const nav = useNav()
   useEffect(() => {
     const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if (settings.fPalette !== false && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault()
         setPalette((p) => !p)
       }
-      if (e.altKey && /^[1-5]$/.test(e.key)) {
+      if (settings.fShortcuts !== false && e.altKey && /^[1-9]$/.test(e.key) && nav[+e.key - 1]) {
         e.preventDefault()
-        go(NAV[+e.key - 1].id)
+        go(nav[+e.key - 1].id)
       }
     }
     addEventListener('keydown', onKey)
     return () => removeEventListener('keydown', onKey)
-  }, [setPalette])
+  }, [setPalette, settings.fPalette, settings.fShortcuts, nav])
+}
+
+/** Optional background refresh of the repo list (Settings → Features). */
+function useAutoRefresh() {
+  const { settings } = useSettings()
+  const { refreshRepos } = useAuth()
+  useEffect(() => {
+    const min = settings.autoRefresh
+    if (!min) return
+    const t = setInterval(() => !document.hidden && refreshRepos().catch(() => {}), min * 60000)
+    return () => clearInterval(t)
+  }, [settings.autoRefresh, refreshRepos])
 }
 
 function Shell() {
   const mobile = useIsMobile()
   const [palette, setPalette] = useState(false)
+  const [accountsOpen, setAccountsOpen] = useState(false)
   useShortcuts(setPalette)
+  useAutoRefresh()
+  const props = { openPalette: () => setPalette(true), openAccounts: () => setAccountsOpen(true) }
   return (
     <>
-      {mobile ? <MobileShell openPalette={() => setPalette(true)} /> : <DesktopShell openPalette={() => setPalette(true)} />}
+      {mobile ? <MobileShell {...props} /> : <DesktopShell {...props} />}
       <CommandPalette open={palette} onClose={() => setPalette(false)} />
+      <AccountMenu open={accountsOpen} onClose={() => setAccountsOpen(false)} />
     </>
   )
 }
@@ -95,47 +122,33 @@ function PageBody({ route, page, mobile }) {
   )
 }
 
-function useSignOut() {
-  const { demo, logout } = useAuth()
-  const { confirm } = useToast()
-  return async () => {
-    if (demo) return logout(false)
-    const ok = await confirm({
-      title: 'Sign out',
-      body: 'Sign out of RepoVerse on this device?\nYour login, cached repos, tags and pins are erased from this browser.',
-      okLabel: 'Sign out',
-      danger: true,
-    })
-    if (ok) logout(true)
-  }
-}
-
 const refreshWith = (refreshRepos, toast) => () => refreshRepos().then(() => toast('Synced with GitHub', 'success')).catch((e) => toast(e.message, 'error'))
 
 // ======================================================================= desktop
-function DesktopShell({ openPalette }) {
-  const { route, page, active } = usePage()
-  const { user, refreshRepos, reposLoading, demo } = useAuth()
+function DesktopShell({ openPalette, openAccounts }) {
+  const { route, page, active, nav: NAVS } = usePage()
+  const { user, refreshRepos, reposLoading, demo, accounts } = useAuth()
+  const { settings } = useSettings()
   const { toast } = useToast()
-  const signOut = useSignOut()
   const [rate, setRate] = useState(null)
   useEffect(() => onRateLimit(setRate), [])
-  const nav = NAV.find((n) => n.id === active)
-  const actions = <HeadActions openPalette={openPalette} rate={rate} reposLoading={reposLoading} onRefresh={refreshWith(refreshRepos, toast)} />
+  const nav = NAVS.find((n) => n.id === active) || NAV[0]
+  const actions = <HeadActions openPalette={settings.fPalette !== false ? openPalette : null} rate={rate} reposLoading={reposLoading} onRefresh={refreshWith(refreshRepos, toast)} />
 
   return (
     <div className="app">
       <Glass as="nav" className="dock" aria-label="Main">
         <button className="dock-logo" onClick={() => go('repos')} aria-label="RepoVerse home" title="RepoVerse" />
-        {NAV.map((n, i) => (
-          <button key={n.id} className={`dock-btn ${active === n.id ? 'active' : ''}`} onClick={() => go(n.id)} data-tip={`${n.label}  ·  Alt ${i + 1}`} aria-label={n.label}>
+        {NAVS.map((n, i) => (
+          <button key={n.id} className={`dock-btn ${active === n.id ? 'active' : ''}`} onClick={() => go(n.id)} data-tip={settings.fShortcuts !== false ? `${n.label}  ·  Alt ${i + 1}` : n.label} aria-label={n.label}>
             {active === n.id && <motion.span layoutId="dock-pill" className="dock-pill" transition={spring} />}
             <n.icon size={20} />
           </button>
         ))}
         <div className="dock-sep" />
-        <button className="dock-btn" onClick={signOut} data-tip={demo ? 'Leave demo' : `Sign out @${user.login}`} aria-label="Sign out">
+        <button className="dock-btn" onClick={openAccounts} data-tip={demo ? 'Demo account' : `@${user.login}${accounts.length > 1 ? `  ·  ${accounts.length} accounts` : ''}`} aria-label="Accounts">
           <img className="avatar" src={user.avatar_url} alt="" />
+          {accounts.length > 1 && <span className="acc-count">{accounts.length}</span>}
         </button>
       </Glass>
 
@@ -169,9 +182,11 @@ function DesktopShell({ openPalette }) {
 function HeadActions({ openPalette, rate, reposLoading, onRefresh }) {
   return (
     <div className="head-actions">
-      <button className="glass pill-search" onClick={openPalette}>
-        <Search size={16} /> <span className="grow" style={{ textAlign: 'left' }}>Jump to…</span> <span className="kbd">Ctrl K</span>
-      </button>
+      {openPalette && (
+        <button className="glass pill-search" onClick={openPalette}>
+          <Search size={16} /> <span className="grow" style={{ textAlign: 'left' }}>Jump to…</span> <span className="kbd">Ctrl K</span>
+        </button>
+      )}
       {rate?.remaining != null && (
         <span className="tag" title={`GitHub API calls left this hour (resets ${new Date(rate.reset * 1000).toLocaleTimeString()})`}>
           <Gauge size={12} /> {rate.remaining.toLocaleString()}
@@ -185,31 +200,33 @@ function HeadActions({ openPalette, rate, reposLoading, onRefresh }) {
 }
 
 // ======================================================================= mobile
-function MobileShell({ openPalette }) {
-  const { route, page, active } = usePage()
-  const { user, refreshRepos, reposLoading } = useAuth()
+function MobileShell({ openPalette, openAccounts }) {
+  const { route, page, active, nav: NAVS } = usePage()
+  const { user, refreshRepos, reposLoading, accounts } = useAuth()
   const { toast } = useToast()
-  const signOut = useSignOut()
-  const nav = NAV.find((n) => n.id === active)
+  const nav = NAVS.find((n) => n.id === active) || NAV[0]
 
   return (
     <div className="m-app">
       <header className="m-head">
         {page === 'repo' && <button className="glass btn icon" onClick={() => go('repos')} aria-label="Back"><ArrowLeft size={18} /></button>}
         <h1>{page === 'repo' ? route.params[1] : page === 'repos' ? 'RepoVerse' : nav.label}</h1>
-        <button className="glass btn icon" onClick={openPalette} aria-label="Search"><Search size={18} /></button>
+        {useSettings().settings.fPalette !== false && <button className="glass btn icon" onClick={openPalette} aria-label="Search"><Search size={18} /></button>}
         {page === 'repos' && (
           <button className="glass btn icon" onClick={refreshWith(refreshRepos, toast)} aria-label="Refresh">
             {reposLoading ? <Spinner /> : <RefreshCw size={17} />}
           </button>
         )}
-        <button className="btn ghost icon" onClick={signOut} aria-label="Account"><img className="avatar" src={user.avatar_url} alt="" /></button>
+        <button className="btn ghost icon" onClick={openAccounts} aria-label="Accounts" style={{ position: 'relative' }}>
+          <img className="avatar" src={user.avatar_url} alt="" />
+          {accounts.length > 1 && <span className="acc-count">{accounts.length}</span>}
+        </button>
       </header>
       <main className="m-main" key={page + (route.params[1] || '')}>
         <PageBody route={route} page={page} mobile />
       </main>
       <Glass as="nav" className="m-tabs" aria-label="Main">
-        {NAV.map((n) => (
+        {NAVS.map((n) => (
           <button key={n.id} className={`m-tab ${active === n.id ? 'on' : ''}`} onClick={() => go(n.id)} aria-label={n.label}>
             {active === n.id && <motion.span layoutId="m-pill" className="dock-pill" transition={spring} />}
             <n.icon size={21} />

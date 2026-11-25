@@ -21,7 +21,8 @@ export default function Background() {
   const latest = useRef(settings)
   latest.current = settings
   const [ready, setReady] = useState(false)
-  const [failed] = useState(() => !webglAvailable())
+  const [noGL] = useState(() => !webglAvailable())
+  const failed = noGL || settings.fScene === false
 
   // (Re)create the scene when quality or device class changes.
   useEffect(() => {

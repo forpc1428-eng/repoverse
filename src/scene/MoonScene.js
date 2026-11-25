@@ -4,17 +4,28 @@ import {
 } from './shaders'
 import { resolvePhase, illumination } from './phase'
 
+// color/normal = NASA texture sizes (in /public/moon). moonTex = procedural fallback size.
 export const QUALITY = {
-  battery: { dpr: 1, fps: 30, stars: 2600, moonTex: 2048, skyTex: 2048, aa: false, detail: 1 },
-  balanced: { dpr: 2, fps: 60, stars: 6500, moonTex: 4096, skyTex: 4096, aa: true, detail: 2 },
-  ultra: { dpr: 2.5, fps: 0, stars: 11000, moonTex: 4096, skyTex: 4096, aa: true, detail: 3 },
+  battery: { dpr: 1, fps: 30, stars: 2600, color: '2k', normal: '2k', moonTex: 2048, skyTex: 2048, aa: false, detail: 1 },
+  balanced: { dpr: 2, fps: 60, stars: 6500, color: '4k', normal: '4k', moonTex: 4096, skyTex: 4096, aa: true, detail: 2 },
+  ultra: { dpr: 3, fps: 0, stars: 11000, color: '8k', normal: '4k', moonTex: 4096, skyTex: 4096, aa: true, detail: 3 },
+}
+
+function maxTexture() {
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2')
+    return gl ? gl.getParameter(gl.MAX_TEXTURE_SIZE) : 4096
+  } catch {
+    return 4096
+  }
 }
 
 export function autoQuality(mobile) {
   const cores = navigator.hardwareConcurrency || 8
   const mem = navigator.deviceMemory || 8
   if (mobile) return cores >= 8 && mem >= 6 ? 'balanced' : 'battery'
-  return cores <= 4 || mem <= 4 ? 'battery' : 'balanced'
+  if (cores <= 4 || mem <= 4) return 'balanced'
+  return maxTexture() >= 8192 ? 'ultra' : 'balanced'
 }
 
 const SHOOT_INTERVAL = { off: 0, rare: 14, normal: 6, shower: 0.9 }
@@ -191,11 +202,13 @@ export class MoonScene {
         uSurf: { value: this.moonRT.texture }, uTexel: { value: new THREE.Vector2(1 / n, 2 / n) },
         uSun: { value: new THREE.Vector3(1, 0, 0) }, uView: { value: new THREE.Vector3(0, 0, 1) },
         uTint: { value: new THREE.Vector3(1, 1, 1) }, uEarthTint: { value: new THREE.Vector3(0.6, 0.7, 1) },
-        uEarthshine: { value: 0.05 }, uExposure: { value: 1.2 }, uBump: { value: 3 }, uReady: { value: 0 }, uContrast: { value: 1 },
+        uEarthshine: { value: 0.05 }, uExposure: { value: 1.2 }, uBump: { value: 1 }, uReady: { value: 0 }, uContrast: { value: 1 },
+        uColorMap: { value: null }, uNormalMap: { value: null }, uMode: { value: 0 },
       },
       transparent: true,
     })
-    const seg = this.q.detail > 1 ? 192 : 128
+    const seg = this.q.detail > 1 ? 256 : 160
+    this.#loadNasaMaps()
     this.moon = new THREE.Mesh(new THREE.SphereGeometry(1, seg, seg / 2), this.moonMat)
     this.moon.renderOrder = 2
     this.glowMat = new THREE.ShaderMaterial({
@@ -209,6 +222,45 @@ export class MoonScene {
     this.glow = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), this.glowMat)
     this.glow.renderOrder = 1
     this.scene.add(this.glow, this.moon)
+  }
+
+  #loadNasaMaps() {
+    const r = this.renderer
+    const maxTex = r.capabilities.maxTextureSize
+    const pick = (size) => (size === '8k' && maxTex < 8192 ? '4k' : size)
+    const load = (url) =>
+      new Promise((resolve, reject) => {
+        const l = new THREE.ImageBitmapLoader()
+        l.setOptions({ imageOrientation: 'flipY', premultiplyAlpha: 'none', colorSpaceConversion: 'none' })
+        l.load(url, (bmp) => {
+          const t = new THREE.Texture(bmp)
+          t.flipY = false
+          t.wrapS = THREE.RepeatWrapping
+          t.wrapT = THREE.ClampToEdgeWrapping
+          t.minFilter = THREE.LinearMipmapLinearFilter
+          t.magFilter = THREE.LinearFilter
+          t.generateMipmaps = true
+          t.anisotropy = r.capabilities.getMaxAnisotropy()
+          t.needsUpdate = true
+          resolve(t)
+        }, undefined, reject)
+      })
+    Promise.all([load(`/moon/moon-color-${pick(this.q.color)}.jpg`), load(`/moon/moon-normal-${this.q.normal}.jpg`)])
+      .then(([color, normal]) => {
+        if (this.disposed) return color.dispose(), normal.dispose()
+        const u = this.moonMat.uniforms
+        u.uColorMap.value = color
+        u.uNormalMap.value = normal
+        u.uMode.value = 1
+        r.initTexture(color)
+        r.initTexture(normal)
+        this.maps = [color, normal]
+        this.moonBaked = true
+      })
+      .catch((e) => {
+        console.warn('NASA moon maps unavailable, using procedural moon', e)
+        this.#queueBake(this.moonRT, this.moonBakeMat, 'moon', () => (this.moonBaked = true))
+      })
   }
 
   #buildShoots() {
@@ -271,7 +323,7 @@ export class MoonScene {
       this.#queueBake(this.skyRT, this.skyBakeMat, 'sky')
     }
     if (changed('starDensity', 'galaxyTilt', 'galaxyOffset', 'galaxyAmount')) this.#fillStars()
-    if (initial) this.#queueBake(this.moonRT, this.moonBakeMat, 'moon', () => (this.moonBaked = true))
+    // (the moon surface comes from NASA maps; the procedural bake is only a fallback)
 
     const st = this.starMat.uniforms
     st.uTwinkle.value = s.reduceMotion ? 0 : s.starTwinkle
@@ -284,7 +336,7 @@ export class MoonScene {
     m.uEarthshine.value = s.earthshine
     m.uExposure.value = s.moonExposure
     m.uContrast.value = s.moonContrast
-    m.uBump.value = s.moonBump * 0.02 * (this.q.moonTex / (4 * Math.PI))
+    m.uBump.value = s.moonBump
     this.glowMat.uniforms.uColor.value = col(s.glowColor)
     this.shoots.forEach((sh) => (sh.material.uniforms.uColor.value = col(s.shootColor)))
     this.#layoutMoon()
@@ -455,6 +507,7 @@ export class MoonScene {
     })
     this.skyRT.dispose()
     this.moonRT.dispose()
+    this.maps?.forEach((t) => t.dispose())
     this.skyBakeMat.dispose()
     this.moonBakeMat.dispose()
     this.bakeQuad.geometry.dispose()
