@@ -33,8 +33,8 @@ There is one button: **Continue with GitHub**. The first time, GitHub asks you t
    - Homepage URL: your Vercel URL, e.g. `https://repoverse.vercel.app`
    - Authorization callback URL: the same URL with a trailing slash, e.g. `https://repoverse.vercel.app/`
 3. In Vercel go to **Project → Settings → Environment Variables** and add:
-   - `GITHUB_CLIENT_ID`: from the OAuth App
    - `GITHUB_CLIENT_SECRET`: generate one on the OAuth App page
+   - (`GITHUB_CLIENT_ID` is optional: the public client ID is already in [`api/_client.js`](api/_client.js). Change it there if you use your own OAuth App.)
 4. **Redeploy** (Deployments → ⋯ → Redeploy). Done: every future `git push` deploys automatically.
 
 The client secret only ever lives in Vercel's environment settings, never in the code. The functions are stateless: they store and log nothing.

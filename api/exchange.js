@@ -1,3 +1,4 @@
+import { CLIENT_ID } from './_client.js'
 // POST /api/exchange: swaps GitHub's one-time sign-in code for an access token.
 //
 // GitHub requires the client secret for this step, and a secret can never live in
@@ -12,8 +13,9 @@ export default async function handler(req, res) {
   const host = req.headers['x-forwarded-host'] || req.headers.host
   if (!origin || new URL(origin).host !== host) return res.status(403).json({ error: 'forbidden_origin' })
 
-  const { GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET } = process.env
-  if (!GITHUB_CLIENT_ID || !GITHUB_CLIENT_SECRET) return res.status(500).json({ error: 'not_configured', error_description: 'GitHub sign-in is not set up on this server yet.' })
+  const { GITHUB_CLIENT_SECRET } = process.env
+  const GITHUB_CLIENT_ID = CLIENT_ID
+  if (!GITHUB_CLIENT_SECRET) return res.status(500).json({ error: 'not_configured', error_description: 'GitHub sign-in is not set up on this server yet.' })
 
   const body = typeof req.body === 'string' ? safeJson(req.body) : req.body || {}
   const { code, redirect_uri } = body
