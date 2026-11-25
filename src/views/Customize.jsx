@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Sparkles, Moon, Stars, LayoutPanelLeft, Gauge, ShieldCheck, Palette, CalendarHeart, CalendarDays, Crosshair, BatteryCharging, Zap, Download, Upload,
-  CloudUpload, CloudDownload, RotateCcw, Trash2, Eye, ToggleRight, Users, Plus, Check, LogOut,
+  CloudUpload, CloudDownload, RotateCcw, Trash2, Eye, ToggleRight, Users, Plus, Check, LogOut, PanelLeft, GripVertical, ChevronUp, ChevronDown, EyeOff,
 } from 'lucide-react'
+import { NAV } from '../App'
+import { orderNav } from '../components/Dock'
 import { Glass, Seg, Spinner, Switch, spring, useToast } from '../components/ui'
 import { sceneRef } from '../components/Background'
 import { useSettings, SCENES, FONTS, DEFAULTS, useIsMobile } from '../lib/settings'
@@ -17,6 +19,7 @@ const SECTIONS = [
   { id: 'moon', label: 'Moon', icon: Moon },
   { id: 'sky', label: 'Sky & stars', icon: Stars },
   { id: 'ui', label: 'Interface', icon: Palette },
+  { id: 'dock', label: 'Dock', icon: PanelLeft },
   { id: 'layout', label: 'Layout', icon: LayoutPanelLeft },
   { id: 'features', label: 'Features', icon: ToggleRight },
   { id: 'accounts', label: 'Accounts', icon: Users },
@@ -112,6 +115,7 @@ export default function Customize() {
         {section === 'moon' && <MoonSection mobile={mobile} />}
         {section === 'sky' && <SkySection />}
         {section === 'ui' && <UiSection />}
+        {section === 'dock' && <DockSection />}
         {section === 'layout' && <LayoutSection />}
         {section === 'features' && <FeaturesSection />}
         {section === 'accounts' && <AccountsSection />}
@@ -282,11 +286,78 @@ function UiSection() {
   )
 }
 
+function DockSection() {
+  const { settings: s, update } = useSettings()
+  const [drag, setDrag] = useState(null)
+  const [over, setOver] = useState(null)
+  const order = orderNav(NAV, { ...s, dockHidden: [] }).map((n) => n.id)
+  const hidden = s.dockHidden || []
+  const move = (id, to) => {
+    const next = order.filter((x) => x !== id)
+    next.splice(Math.max(0, Math.min(next.length, to)), 0, id)
+    update({ dockOrder: next })
+  }
+  const toggle = (id) => update({ dockHidden: hidden.includes(id) ? hidden.filter((x) => x !== id) : [...hidden, id] })
+  return (
+    <>
+      <Glass className="cz-group">
+        <h3>Dock items <span className="faint" style={{ textTransform: 'none', letterSpacing: 0 }}>· drag to reorder</span></h3>
+        <div className="col" style={{ gap: 6, margin: '8px 0 12px' }}>
+          {order.map((id, i) => {
+            const n = NAV.find((x) => x.id === id)
+            const off = hidden.includes(id)
+            return (
+              <div
+                key={id}
+                className={`dock-edit-row ${drag === id ? 'dragging' : ''} ${over === id ? 'over' : ''} ${off ? 'off' : ''}`}
+                draggable
+                onDragStart={() => setDrag(id)}
+                onDragEnd={() => (setDrag(null), setOver(null))}
+                onDragOver={(e) => (e.preventDefault(), setOver(id))}
+                onDrop={(e) => (e.preventDefault(), drag && drag !== id && move(drag, i), setDrag(null), setOver(null))}
+              >
+                <GripVertical size={16} className="faint" />
+                <n.icon size={18} />
+                <span className="grow">{n.label}</span>
+                <button className="btn ghost sm icon" aria-label="Move up" disabled={i === 0} onClick={() => move(id, i - 1)}><ChevronUp size={15} /></button>
+                <button className="btn ghost sm icon" aria-label="Move down" disabled={i === order.length - 1} onClick={() => move(id, i + 1)}><ChevronDown size={15} /></button>
+                {id === 'customize' ? (
+                  <span className="hint" style={{ width: 32, textAlign: 'center' }} title="Always shown so you can get back here">🔒</span>
+                ) : (
+                  <button className="btn ghost sm icon" aria-label={off ? 'Show' : 'Hide'} title={off ? 'Show in dock' : 'Hide from dock'} onClick={() => toggle(id)}>{off ? <EyeOff size={15} /> : <Eye size={15} />}</button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </Glass>
+      <Glass className="cz-group">
+        <h3>Look</h3>
+        <Choice k="dock" label="Position" hint="Desktop" options={[['left', 'Left'], ['right', 'Right'], ['bottom', 'Bottom']]} />
+        <Choice k="dockSize" label="Size" options={[['sm', 'Small'], ['md', 'Medium'], ['lg', 'Large']]} />
+        <Toggle k="dockCompact" label="Compact" hint="Hug the icons instead of full height" />
+        <Toggle k="dockLabels" label="Show labels" hint="Names under the icons" />
+        <Toggle k="dockLogo" label="Moon logo" hint="Shows tonight's (or your chosen) phase" />
+        <Toggle k="dockAccount" label="Account button" />
+      </Glass>
+      <Glass className="cz-group">
+        <h3>Pinned repos</h3>
+        <Toggle k="dockPins" label="Pinned repos in dock" hint="Pin repos from their card to add them here" />
+        {s.dockPins && <Slider k="dockPinCount" label="How many" min={1} max={10} step={1} fmt={(v) => v} />}
+        <Row label="Reset dock">
+          <button className="btn sm" onClick={() => update({ dockOrder: NAV.map((n) => n.id), dockHidden: [], dockSize: 'md', dockLabels: false, dockCompact: true, dock: 'left', dockPins: true, dockLogo: true, dockAccount: true })}>
+            <RotateCcw size={14} /> Default dock
+          </button>
+        </Row>
+      </Glass>
+    </>
+  )
+}
+
 function LayoutSection() {
   return (
     <Glass className="cz-group">
       <h3>Layout</h3>
-      <Choice k="dock" label="Navigation dock" hint="Desktop" options={[['left', 'Left'], ['bottom', 'Bottom']]} />
       <Choice k="cardSize" label="Card size" options={[['s', 'Small'], ['m', 'Medium'], ['l', 'Large']]} />
       <Choice k="density" label="Spacing" options={[['compact', 'Compact'], ['comfy', 'Comfy'], ['spacious', 'Spacious']]} />
       <Choice k="width" label="Content width" options={[['contained', 'Centered'], ['full', 'Full']]} />

@@ -15,6 +15,7 @@ import Push from './views/Push'
 import Insights from './views/Insights'
 import Customize from './views/Customize'
 import AccountMenu from './components/AccountMenu'
+import Dock, { orderNav } from './components/Dock'
 import { useSettings } from './lib/settings'
 
 export const NAV = [
@@ -64,7 +65,7 @@ function usePage() {
 
 function useShortcuts(setPalette) {
   const { settings } = useSettings()
-  const nav = useNav()
+  const nav = orderNav(useNav(), settings)
   useEffect(() => {
     const onKey = (e) => {
       if (settings.fPalette !== false && (e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
@@ -137,20 +138,7 @@ function DesktopShell({ openPalette, openAccounts }) {
 
   return (
     <div className="app">
-      <Glass as="nav" className="dock" aria-label="Main">
-        <button className="dock-logo" onClick={() => go('repos')} aria-label="RepoVerse home" title="RepoVerse" />
-        {NAVS.map((n, i) => (
-          <button key={n.id} className={`dock-btn ${active === n.id ? 'active' : ''}`} onClick={() => go(n.id)} data-tip={settings.fShortcuts !== false ? `${n.label}  ·  Alt ${i + 1}` : n.label} aria-label={n.label}>
-            {active === n.id && <motion.span layoutId="dock-pill" className="dock-pill" transition={spring} />}
-            <n.icon size={20} />
-          </button>
-        ))}
-        <div className="dock-sep" />
-        <button className="dock-btn" onClick={openAccounts} data-tip={demo ? 'Demo account' : `@${user.login}${accounts.length > 1 ? `  ·  ${accounts.length} accounts` : ''}`} aria-label="Accounts">
-          <img className="avatar" src={user.avatar_url} alt="" />
-          {accounts.length > 1 && <span className="acc-count">{accounts.length}</span>}
-        </button>
-      </Glass>
+      <Dock nav={NAVS} active={active} openAccounts={openAccounts} />
 
       <main className="main" id="main">
         <div className="page" key={page + (route.params[0] || '') + (route.params[1] || '')}>
@@ -226,7 +214,7 @@ function MobileShell({ openPalette, openAccounts }) {
         <PageBody route={route} page={page} mobile />
       </main>
       <Glass as="nav" className="m-tabs" aria-label="Main">
-        {NAVS.map((n) => (
+        {orderNav(NAVS, useSettings().settings).map((n) => (
           <button key={n.id} className={`m-tab ${active === n.id ? 'on' : ''}`} onClick={() => go(n.id)} aria-label={n.label}>
             {active === n.id && <motion.span layoutId="m-pill" className="dock-pill" transition={spring} />}
             <n.icon size={21} />

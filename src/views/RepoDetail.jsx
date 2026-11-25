@@ -6,6 +6,8 @@ import {
 import { Glass, Modal, Spinner, Switch, Tabs, Field, Ring, useToast } from '../components/ui'
 import Markdown from '../components/Markdown'
 import ScaledFrame from '../components/ScaledFrame'
+import { autoDetails } from '../lib/auto'
+import { PreviewHit, FullScreenPreview, enterFullscreen } from './Wall'
 import { initials } from './Repos'
 import { useAuth } from '../lib/auth'
 import { go } from '../lib/router'
@@ -66,6 +68,7 @@ function Overview({ repo, update, setTab }) {
   const { toast } = useToast()
   const [langs, setLangs] = useState(null)
   const [fixing, setFixing] = useState('')
+  const [full, setFull] = useState(false)
   const h = health(repo)
   const site = siteUrl(repo)
 
@@ -88,7 +91,28 @@ function Overview({ repo, update, setTab }) {
       setFixing('')
     }
   }
-  const fixes = { description: () => setTab('settings'), topics: () => setTab('settings'), homepage: () => setTab('settings'), license: addLicense }
+  const autoFix = async (key) => {
+    setFixing(key)
+    try {
+      const a = await autoDetails(gh, repo)
+      if (key === 'description') update(await gh.updateRepo(repo.full_name, { description: a.description }))
+      if (key === 'topics') {
+        if (!a.topics.length) throw new Error('No topics could be worked out for this repo.')
+        const t = await gh.setTopics(repo.full_name, a.topics)
+        update({ topics: t.names })
+      }
+      if (key === 'homepage') {
+        if (!a.homepage) return setTab('settings'), toast('No website found. Enable GitHub Pages in Settings.', 'info')
+        update(await gh.updateRepo(repo.full_name, { homepage: a.homepage }))
+      }
+      toast('Fixed automatically. Edit it any time in Settings.', 'success')
+    } catch (e) {
+      toast(e.message, 'error')
+    } finally {
+      setFixing('')
+    }
+  }
+  const fixes = { description: () => autoFix('description'), topics: () => autoFix('topics'), homepage: () => autoFix('homepage'), license: addLicense }
 
   return (
     <div className="col" style={{ gap: 16 }}>
@@ -167,12 +191,16 @@ function Overview({ repo, update, setTab }) {
 
       {site && (
         <Glass className="shot" lit={false}>
-          <div className="shot-bar"><div className="dots"><i /><i /><i /></div><div className="url-pill">{site}</div></div>
+          <div className="shot-bar"><div className="dots"><i /><i /><i /></div><div className="url-pill">{site}</div>
+            <a className="btn sm" href={site} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> New tab</a>
+          </div>
           <div className="viewport" style={{ aspectRatio: '16/8' }}>
+            <PreviewHit url={site} onFull={() => (setFull(true), enterFullscreen())} />
             <ScaledFrame src={site} />
           </div>
         </Glass>
       )}
+      <FullScreenPreview site={full && site ? { url: site, repo } : null} onClose={() => setFull(false)} />
     </div>
   )
 }
@@ -611,10 +639,28 @@ function SettingsTab({ repo, update }) {
   }
 
   const f = (k) => ({ value: form[k], onChange: (e) => setForm({ ...form, [k]: e.target.value }) })
+  const autoFill = () => run('auto', async () => {
+    const a = await autoDetails(gh, repo)
+    setForm((x) => ({ ...x, description: x.description || a.description, homepage: x.homepage || a.homepage }))
+    setTopics((t) => [...new Set([...t, ...a.topics])])
+    toast('Suggestions filled in. Review, edit, then Save.', 'success')
+  })
+  const autoReplace = () => run('auto', async () => {
+    const a = await autoDetails(gh, repo)
+    setForm((x) => ({ ...x, description: a.description, homepage: a.homepage || x.homepage }))
+    setTopics(a.topics)
+    toast('Replaced with fresh suggestions. Review, edit, then Save.', 'success')
+  })
   return (
     <div className="widgets">
       <Glass className="section widget" style={{ '--span': 7 }}>
-        <h3>General</h3>
+        <h3>
+          General <span className="grow" />
+          <button className="btn sm primary" onClick={autoFill} disabled={busy === 'auto'} title="Fill empty fields from the README, package.json and languages (free, in your browser)">
+            {busy === 'auto' ? <Spinner size={13} /> : <Wand2 size={14} />} Auto-fill
+          </button>
+          <button className="btn sm" onClick={autoReplace} disabled={busy === 'auto'} title="Replace description and topics with new suggestions">Regenerate</button>
+        </h3>
         <Field label="Repository name"><input className="input" {...f('name')} /></Field>
         <Field label="Description"><input className="input" {...f('description')} placeholder="What does this project do?" /></Field>
         <Field label="Website" hint="Shown in the repo sidebar and used by the Preview Wall."><input className="input" {...f('homepage')} placeholder="https://…" /></Field>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Monitor, Tablet, Smartphone, Maximize2, ExternalLink, Activity, Search, Image as ImageIcon, Radio, MonitorPlay, Settings2 } from 'lucide-react'
+import { Monitor, Tablet, Smartphone, Maximize2, ExternalLink, Activity, Search, Image as ImageIcon, Radio, MonitorPlay, Settings2, X } from 'lucide-react'
 import { Glass, Modal, Seg, Spinner } from '../components/ui'
 import ScaledFrame from '../components/ScaledFrame'
 import { useAuth } from '../lib/auth'
@@ -63,6 +63,11 @@ export default function Wall() {
     if (sites.length && !Object.keys(status).length) checkAll()
   }, [sites.length]) // eslint-disable-line
 
+  const openFull = (s) => {
+    setFull(s)
+    enterFullscreen()
+  }
+
   const up = Object.values(status).filter((s) => s.state === 'up').length
   const down = Object.values(status).filter((s) => s.state === 'down').length
   const minByDevice = device === 'mobile' ? Math.min(settings.wallMin, 260) : settings.wallMin
@@ -104,16 +109,15 @@ export default function Wall() {
       </Glass>
 
       <div className="wall" style={{ '--wall-min': minByDevice + 'px' }}>
+        {/* click a preview = full screen, Ctrl/⌘/middle-click = new tab */}
         {sites.map((s, i) => (
           <motion.div key={s.repo.id} initial={{ opacity: 0, y: 20, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: Math.min(i, 12) * 0.04, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>
-            <SiteCard s={s} st={status[s.url]} device={device} mode={settings.fLivePreviews === false ? 'snapshot' : settings.wallMode} onFull={() => setFull(s)} />
+            <SiteCard s={s} st={status[s.url]} device={device} mode={settings.fLivePreviews === false ? 'snapshot' : settings.wallMode} onFull={() => openFull(s)} />
           </motion.div>
         ))}
       </div>
 
-      <Modal open={!!full} onClose={() => setFull(null)} size="full">
-        {full && <FullPreview s={full} />}
-      </Modal>
+      <FullScreenPreview site={full} onClose={() => setFull(null)} />
     </div>
   )
 }
@@ -129,10 +133,11 @@ function SiteCard({ s, st, device, mode, onFull }) {
         <b style={{ fontSize: 13.5, whiteSpace: 'nowrap', cursor: 'pointer' }} onClick={() => go('repo', s.repo.owner.login, s.repo.name)}>{s.repo.name}</b>
         <div className="url-pill">{s.url.replace(/^https?:\/\//, '')}</div>
         {st?.ms && <span className="faint" style={{ fontSize: 11.5 }}>{st.ms}ms</span>}
-        <button className="btn ghost sm icon" onClick={onFull} title="Full screen"><Maximize2 size={14} /></button>
-        <a className="btn ghost sm icon" href={s.url} target="_blank" rel="noopener noreferrer" title="Open"><ExternalLink size={14} /></a>
+        <button className="btn ghost sm icon" onClick={onFull} title="Full screen" aria-label="Full screen"><Maximize2 size={14} /></button>
+        <a className="btn sm" href={s.url} target="_blank" rel="noopener noreferrer" title="Open in a new tab"><ExternalLink size={13} /> New tab</a>
       </div>
       <div className="viewport" style={{ aspectRatio: d.aspect }}>
+        <PreviewHit url={s.url} onFull={onFull} />
         {mode === 'snapshot' || s.repo.private ? (
           <img className="snapshot" src={snapshot} alt={s.repo.name} loading="lazy" referrerPolicy="no-referrer" />
         ) : (
@@ -146,13 +151,55 @@ function SiteCard({ s, st, device, mode, onFull }) {
   )
 }
 
-function FullPreview({ s }) {
+export function enterFullscreen() {
+  const el = document.documentElement
+  if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen().catch(() => {})
+}
+function exitFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+}
+
+/** Transparent layer over a live preview: click = full screen, Ctrl/⌘/middle-click = new tab. */
+export function PreviewHit({ url, onFull }) {
+  const newTab = () => window.open(url, '_blank', 'noopener,noreferrer')
+  return (
+    <button
+      className="vp-hit"
+      aria-label="Open full screen"
+      onClick={(e) => (e.ctrlKey || e.metaKey || e.shiftKey ? newTab() : onFull())}
+      onAuxClick={(e) => e.button === 1 && newTab()}
+    >
+      <span className="vp-hint"><Maximize2 size={13} /> Full screen <span className="faint">· Ctrl-click: new tab</span></span>
+    </button>
+  )
+}
+
+/** Full-screen site viewer (fills the monitor). Esc or ✕ to leave. */
+export function FullScreenPreview({ site, onClose }) {
+  useEffect(() => {
+    if (!site) return
+    const onFs = () => !document.fullscreenElement && onClose()
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [site, onClose])
+  const close = () => {
+    exitFullscreen()
+    onClose()
+  }
+  return (
+    <Modal open={!!site} onClose={close} size="immersive">
+      {site && <FullPreview s={site} onClose={close} />}
+    </Modal>
+  )
+}
+
+function FullPreview({ s, onClose }) {
   const [device, setDevice] = useState('desktop')
   const d = DEVICES[device]
   const w = { desktop: '100%', tablet: '820px', mobile: '390px' }[device]
   return (
     <>
-      <div className="row" style={{ marginBottom: 14 }}>
+      <div className="row" style={{ marginBottom: 12, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>{s.repo.name}</h2>
         <span className="url-pill" style={{ maxWidth: 420 }}>{s.url}</span>
         <div className="grow" />
@@ -161,11 +208,12 @@ function FullPreview({ s }) {
           { value: 'tablet', icon: <Tablet size={15} />, label: 'Tablet' },
           { value: 'mobile', icon: <Smartphone size={15} />, label: 'Mobile' },
         ]} />
-        <a className="btn" href={s.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} /> Open</a>
+        <a className="btn" href={s.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} /> New tab</a>
+        <button className="btn icon" onClick={onClose} aria-label="Exit full screen" title="Exit full screen (Esc)"><X size={18} /></button>
       </div>
       <div style={{ flex: 1, display: 'grid', placeItems: 'center', minHeight: 0 }}>
         <motion.div layout transition={{ type: 'spring', stiffness: 260, damping: 30 }}
-          style={{ width: w, maxWidth: '100%', height: '100%', borderRadius: device === 'desktop' ? 14 : 28, overflow: 'hidden', border: '1px solid var(--stroke)', boxShadow: '0 30px 80px -20px rgba(0,0,0,.7)', background: '#fff' }}>
+          style={{ width: w, maxWidth: '100%', height: '100%', borderRadius: device === 'desktop' ? 12 : 28, overflow: 'hidden', border: '1px solid var(--line-2)', boxShadow: '0 30px 80px -20px rgba(0,0,0,.7)', background: '#fff' }}>
           <iframe src={s.url} title={s.url} sandbox="allow-scripts allow-same-origin allow-forms allow-popups" referrerPolicy="no-referrer" style={{ width: '100%', height: '100%', border: 0 }} data-width={d.width} />
         </motion.div>
       </div>

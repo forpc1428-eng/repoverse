@@ -103,7 +103,9 @@ export const DEFAULTS = {
   // interface
   blur: 20, glassAlpha: 0.07, radius: 20, cardStyle: 'glass', cardBlur: false, font: 'system', uiScale: 1,
   // layout
-  dock: 'left', cardSize: 'm', density: 'comfy', width: 'contained', view: 'grid', sort: 'pushed', showHealth: true,
+  dock: 'left', dockOrder: ['repos', 'wall', 'push', 'insights', 'customize'], dockHidden: [], dockSize: 'md', dockLabels: false, dockCompact: true,
+  dockPins: true, dockPinCount: 5, dockLogo: true, dockAccount: true,
+  cardSize: 'm', density: 'comfy', width: 'contained', view: 'grid', sort: 'pushed', showHealth: true,
   // features (Settings → Features)
   fWall: true, fPush: true, fInsights: true, fCodeSearch: true, fBulk: true, fBoard: true, fTimeline: true,
   fPalette: true, fShortcuts: true, fLivePreviews: true, fHero: true, fForks: true, fScene: true, fToasts: true,

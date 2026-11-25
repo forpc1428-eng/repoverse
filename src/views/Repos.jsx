@@ -2,13 +2,14 @@ import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Search, Star, GitFork, Lock, Globe, LayoutGrid, List, Columns3, CalendarClock, Pin, PinOff, CheckSquare, Tag, Archive, ArchiveRestore,
-  Eye, EyeOff, X, Plus, Code2, ExternalLink, FolderPlus, Trash2, BookMarked, FolderUp, MonitorPlay, Moon, Copy,
+  Eye, EyeOff, X, Plus, Code2, ExternalLink, FolderPlus, Trash2, BookMarked, FolderUp, MonitorPlay, Moon, Copy, Wand2,
 } from 'lucide-react'
 import { Glass, Modal, Ring, Seg, Spinner, TiltCard, useToast } from '../components/ui'
 import { useAuth } from '../lib/auth'
 import { useSettings } from '../lib/settings'
 import { go } from '../lib/router'
 import { fmt, health, healthColor, langColor, siteUrl, timeAgo } from '../lib/util'
+import { autoDetails } from '../lib/auto'
 
 const FILTERS = [
   ['all', 'All'], ['pinned', 'Pinned'], ['public', 'Public'], ['private', 'Private'], ['sites', 'Has site'], ['forks', 'Forks'], ['archived', 'Archived'],
@@ -285,6 +286,23 @@ export default function Repos({ mobile }) {
             <span className="row"><Spinner /> {bulkBusy}…</span>
           ) : (
             <>
+              <button
+                className="btn sm primary"
+                disabled={!selected.size}
+                title="Fill missing descriptions, topics and websites for the selected repos (free). Existing values are kept."
+                onClick={() =>
+                  bulk('Auto-fill details', async (r) => {
+                    const a = await autoDetails(gh, r)
+                    const patch = {}
+                    if (!r.description && a.description) patch.description = a.description
+                    if (!r.homepage && a.homepage) patch.homepage = a.homepage
+                    if (Object.keys(patch).length) patchRepo(r.full_name, await gh.updateRepo(r.full_name, patch))
+                    if (!(r.topics || []).length && a.topics.length) patchRepo(r.full_name, { topics: (await gh.setTopics(r.full_name, a.topics)).names })
+                  }, { body: `Fill in missing descriptions, topics and websites for ${selected.size} repositories?\nOnly empty fields are filled; nothing you wrote is replaced.` })
+                }
+              >
+                <Wand2 size={14} /> Auto-fill
+              </button>
               <button className="btn sm" disabled={!selected.size} onClick={bulkTag}><Tag size={14} /> Local tag</button>
               <button className="btn sm" disabled={!selected.size} onClick={() => bulkTopic(true)}><Plus size={14} /> Topic</button>
               <button className="btn sm" disabled={!selected.size} onClick={() => bulkTopic(false)}><X size={14} /> Topic</button>

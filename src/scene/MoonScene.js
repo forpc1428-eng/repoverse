@@ -416,7 +416,7 @@ export class MoonScene {
     const s = this.s
     const still = s.reduceMotion
     const speed = still ? 0 : s.motion ?? 1
-    this.time += dt * speed
+    this.time += dt * speed * 1.15 // overall motion pace (+15%)
 
     // camera parallax (depth): stars & galaxy drift against the near moon
     if (s.parallax && !still) {
