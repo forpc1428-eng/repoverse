@@ -9,6 +9,7 @@ import ScaledFrame from '../components/ScaledFrame'
 import { autoDetails } from '../lib/auto'
 import { useSettings } from '../lib/settings'
 import { DeployStatus, ReleaseHelper, BranchesTab, StagedReview } from './RepoExtras'
+import HostBadges from '../components/HostBadges'
 import { PreviewHit, FullScreenPreview, enterFullscreen } from './Wall'
 import { initials } from './Repos'
 import { useAuth } from '../lib/auth'
@@ -138,6 +139,7 @@ function Overview({ repo, update, setTab }) {
               </div>
               <p className="muted" style={{ margin: '6px 0 12px', maxWidth: 720, fontSize: 15 }}>{repo.description || 'No description yet.'}</p>
               <div className="row wrap" style={{ gap: 6 }}>{(repo.topics || []).map((t) => <span key={t} className="tag">{t}</span>)}</div>
+              <div className="row wrap" style={{ gap: 8, marginTop: 10 }}><HostBadgesLabel repo={repo} /></div>
             </div>
           </div>
           <div className="row wrap">
@@ -748,4 +750,8 @@ function SettingsTab({ repo, update }) {
       </div>
     </div>
   )
+}
+
+function HostBadgesLabel({ repo }) {
+  return <HostBadges repo={repo} compact={false} />
 }

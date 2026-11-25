@@ -23,6 +23,8 @@ import Tools from './views/Tools'
 import AccountMenu from './components/AccountMenu'
 import Credit from './components/Credit'
 import Dock, { orderNav } from './components/Dock'
+import Intro from './components/Intro'
+import { loadHostLinks, refreshHostLinks } from './lib/hostmap'
 
 export const NAV = [
   { id: 'repos', label: 'Repositories', short: 'Repos', icon: LayoutGrid, sub: 'Everything you own on GitHub' },
@@ -48,6 +50,7 @@ export default function App() {
   return (
     <>
       <Background />
+      <Intro />
       {status === 'loading' ? (
         <div className="login-wrap" style={{ justifyContent: 'center' }}><Spinner size={30} /></div>
       ) : status === 'out' ? (
@@ -102,6 +105,11 @@ function useServices() {
     return () => clearInterval(t)
   }, [settings.autoRefresh, refreshRepos])
   useEffect(() => setSmartCache(settings.fSmartCache !== false), [settings.fSmartCache])
+  // where each repo is hosted (Vercel / Netlify / Pages)
+  useEffect(() => {
+    if (settings.fHostBadges === false) return
+    loadHostLinks().then(() => refreshHostLinks()).catch(() => {})
+  }, [settings.fHostBadges])
   useEffect(() => {
     if (!demo && settings.fGrowth !== false && repos.length) recordSnapshot(user.login, repos).catch(() => {})
   }, [repos, user?.login, demo, settings.fGrowth])

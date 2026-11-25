@@ -6,6 +6,8 @@ import { useSettings } from '../lib/settings'
 import { go } from '../lib/router'
 import { PROVIDERS, identify, listProjects, redeploy, loadHostAccounts, saveHostAccounts } from '../lib/hosting'
 import { timeAgo } from '../lib/util'
+import { refreshHostLinks } from '../lib/hostmap'
+import { HostIcon } from '../components/HostBadges'
 
 const STATE = { ready: ['#34d399', 'Ready'], building: ['#fbbf24', 'Building'], error: ['#f87171', 'Error'], unknown: ['#9ca3af', 'No deploys'] }
 
@@ -34,6 +36,7 @@ export default function Hosting() {
     setProjects(null)
     try {
       setProjects(await listProjects(acc, scope))
+      refreshHostLinks().catch(() => {})
     } catch (e) {
       toast(e.message, 'error')
       setProjects([])
@@ -117,10 +120,10 @@ export default function Hosting() {
             return (
               <div key={p.id} className="card glass" style={{ '--i': i, cursor: 'default' }}>
                 <div className="card-head">
-                  <span className="status-dot" style={{ background: color, boxShadow: `0 0 8px ${color}` }} />
+                  <HostIcon provider={p.provider} size={15} />
                   <div className="grow">
                     <div className="card-title"><span className="name">{p.name}</span></div>
-                    <div className="card-sub">{label} · {timeAgo(p.updated)}{p.framework ? ` · ${p.framework}` : ''}</div>
+                    <div className="card-sub"><span className="status-dot" style={{ background: color, width: 7, height: 7 }} /> {label} · {timeAgo(p.updated)}{p.framework ? ` · ${p.framework}` : ''}</div>
                   </div>
                 </div>
                 {p.url && <a className="url-pill" style={{ textDecoration: 'none' }} href={p.url} target="_blank" rel="noopener noreferrer">{p.url.replace(/^https?:\/\//, '')}</a>}

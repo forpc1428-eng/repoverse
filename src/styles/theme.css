@@ -541,3 +541,12 @@ input[type=date] { color-scheme: dark; }
 /* ---------- settings search ---------- */
 .cz-search { margin-bottom: 4px; }
 .cz-search .input { height: 44px; border-radius: 14px; }
+
+/* ---------- hosting badges ---------- */
+.host-icons { display: inline-flex; gap: 4px; margin-left: 2px; flex: none; }
+.host-icon { width: 20px; height: 20px; display: grid; place-items: center; border-radius: 7px; background: rgba(255,255,255,.06); border: 1px solid var(--line); transition: background .2s; }
+.host-icon:hover { background: rgba(255,255,255,.14); }
+.host-chip { gap: 6px; }
+
+/* ---------- starry intro ---------- */
+.intro { position: fixed; inset: 0; z-index: 200; width: 100vw; height: 100vh; cursor: pointer; }

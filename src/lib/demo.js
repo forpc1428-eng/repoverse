@@ -7,9 +7,9 @@ const ago = (d) => new Date(now - d * 86400000).toISOString()
 const owner = { login: 'demo-dev', avatar_url: 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><defs><linearGradient id="g"><stop stop-color="#8b5cf6"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><rect width="40" height="40" fill="url(#g)"/><text x="20" y="26" font-size="16" text-anchor="middle" fill="#fff" font-family="sans-serif" font-weight="700">D</text></svg>') }
 
 const SAMPLE = [
-  ['nebula-portfolio', 'Personal portfolio with 3D scenes and smooth scroll', 'TypeScript', 128, 14, 1, false, 'https://example.com', ['portfolio', 'threejs', 'react'], 'mit'],
+  ['nebula-portfolio', 'Personal portfolio with 3D scenes and smooth scroll', 'TypeScript', 128, 14, 1, false, 'https://nebula-portfolio.vercel.app', ['portfolio', 'threejs', 'react'], 'mit'],
   ['snack-toss', 'A tiny physics arcade game for the browser', 'JavaScript', 42, 6, 4, false, null, ['game', 'canvas'], 'mit', true],
-  ['orbit-forge', 'Procedural planet generator with WebGL shaders', 'TypeScript', 311, 27, 9, false, 'https://example.org', ['webgl', 'shaders', 'generative'], 'apache-2.0'],
+  ['orbit-forge', 'Procedural planet generator with WebGL shaders', 'TypeScript', 311, 27, 9, false, 'https://orbit-forge.netlify.app', ['webgl', 'shaders', 'generative'], 'apache-2.0'],
   ['astro-flow', 'Workflow automation dashboard', 'Python', 19, 2, 12, true, null, ['automation'], null],
   ['forge-studio', 'Design tool for crafting UI kits', 'TypeScript', 76, 8, 20, false, null, [], 'mit'],
   ['link-multiverse', 'All my links in one cosmic page', 'HTML', 9, 1, 33, false, null, ['links'], null, true],

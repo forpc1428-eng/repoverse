@@ -500,6 +500,10 @@ function FeaturesSection() {
         <Toggle k="fRateBadge" label="API usage badge" />
         <Toggle k="fSmartCache" label="Smart caching" hint="Faster refreshes, fewer GitHub API calls" />
         <Toggle k="fCredit" label="Made-by credit" />
+        <Toggle k="fIntro" label="Starry intro" hint="“made by Vedant” written in stars when RepoVerse opens" />
+        <Choice k="introWhen" label="Show the intro" options={[['session', 'Each visit'], ['always', 'Every reload'], ['first', 'Only once']]} />
+        <Row label="Play the intro now"><button className="btn sm" onClick={() => dispatchEvent(new Event('rv-intro'))}>Play</button></Row>
+        <Toggle k="fHostBadges" label="Hosting badges" hint="Shows which repos are on Vercel, Netlify or GitHub Pages" />
         <Choice k="autoRefresh" label="Auto-refresh repos" options={[[0, 'Off'], [5, '5 min'], [15, '15 min'], [60, '1 hour']]} />
       </Glass>
     </>
@@ -560,6 +564,7 @@ function AboutSection() {
       </div>
       <p className="hint" style={{ marginTop: 14 }}>Moon imagery: NASA LRO / SVS (public domain).</p>
       <Credit inline />
+      <button className="btn sm" style={{ marginTop: 14 }} onClick={() => dispatchEvent(new Event('rv-intro'))}>✦ Replay intro</button>
     </Glass>
   )
 }

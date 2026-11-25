@@ -127,6 +127,7 @@ export const DEFAULTS = {
   fGrowth: true,
   // app
   fScene: true, fPalette: true, fShortcuts: true, fToasts: true, fTooltips: true, fRateBadge: true, fSmartCache: true, fCredit: true,
+  fHostBadges: true, fIntro: true, introWhen: 'session',
   autoRefresh: 0,
   perfMode: false, perfBackup: null,
   // performance

@@ -11,9 +11,11 @@ import { go } from '../lib/router'
 import { fmt, health, healthColor, langColor, siteUrl, timeAgo } from '../lib/util'
 import { autoDetails } from '../lib/auto'
 import { createClient } from '../lib/github'
+import HostBadges from '../components/HostBadges'
+import { hostsFor, useHostLinks } from '../lib/hostmap'
 
 const FILTERS = [
-  ['all', 'All'], ['pinned', 'Pinned'], ['public', 'Public'], ['private', 'Private'], ['sites', 'Has site'], ['forks', 'Forks'], ['archived', 'Archived'],
+  ['all', 'All'], ['pinned', 'Pinned'], ['public', 'Public'], ['private', 'Private'], ['sites', 'Has site'], ['vercel', 'Vercel'], ['netlify', 'Netlify'], ['forks', 'Forks'], ['archived', 'Archived'],
 ]
 const SORTS = [['pushed', 'Last pushed'], ['updated', 'Last updated'], ['created', 'Newest'], ['stars', 'Most stars'], ['name', 'Name'], ['health', 'Health']]
 
@@ -80,6 +82,7 @@ export default function Repos({ mobile }) {
       alive = false
     }
   }, [settings.fMergeAccounts, accounts, me.login])
+  const hostMap = useHostLinks()
   const allRepos = useMemo(() => {
     const seen = new Set(repos.map((r) => r.id))
     return [...repos, ...others.filter((r) => !seen.has(r.id))]
@@ -95,6 +98,7 @@ export default function Repos({ mobile }) {
       if (filter === 'public' && r.private) return false
       if (filter === 'private' && !r.private) return false
       if (filter === 'sites' && !siteUrl(r)) return false
+      if ((filter === 'vercel' || filter === 'netlify') && !hostsFor(r, hostMap).some((h) => h.provider === filter)) return false
       if (filter === 'forks' && !r.fork) return false
       if (settings.fForks === false && r.fork && filter !== 'forks') return false
       if (filter === 'archived' ? !r.archived : filter !== 'all' && filter !== 'pinned' && r.archived) return false
@@ -117,7 +121,7 @@ export default function Repos({ mobile }) {
     l = [...l].sort(by)
     // pinned always first
     return [...l.filter((r) => userData.pins.includes(r.full_name)), ...l.filter((r) => !userData.pins.includes(r.full_name))]
-  }, [allRepos, q, filter, lang, tagFilter, settings.sort, settings.fForks, userData])
+  }, [allRepos, q, filter, lang, tagFilter, settings.sort, settings.fForks, userData, hostMap])
 
   const togglePin = (full) =>
     setUserData((u) => ({ ...u, pins: u.pins.includes(full) ? u.pins.filter((p) => p !== full) : [full, ...u.pins] }))
@@ -187,7 +191,9 @@ export default function Repos({ mobile }) {
     sites: repos.filter((r) => siteUrl(r) && !r.archived).length,
     forks: repos.filter((r) => r.fork && !r.archived).length,
     archived: repos.filter((r) => r.archived).length,
-  }), [repos, userData.pins])
+    vercel: repos.filter((r) => hostsFor(r, hostMap).some((h) => h.provider === 'vercel')).length,
+    netlify: repos.filter((r) => hostsFor(r, hostMap).some((h) => h.provider === 'netlify')).length,
+  }), [repos, userData.pins, hostMap])
 
   if (mobile)
     return (
@@ -200,7 +206,7 @@ export default function Repos({ mobile }) {
           </div>
         </div>
         {settings.fFilters !== false && <div className="filters">
-          {FILTERS.map(([v, l]) => (
+          {FILTERS.filter(([v]) => !['vercel', 'netlify'].includes(v) || counts[v] > 0).map(([v, l]) => (
             <button key={v} className={`chip ${filter === v ? 'on' : ''}`} onClick={() => setFilter(v)}>{l}<span className="n">{counts[v]}</span></button>
           ))}
         </div>}
@@ -220,6 +226,7 @@ export default function Repos({ mobile }) {
                     <div className="row" style={{ gap: 6 }}>
                       <span className="name">{r.name}</span>
                       {r.private && <Lock size={12} className="faint" />}
+                      <HostBadges repo={r} />
                     </div>
                     <div className="desc">{r.description || (r.language ? r.language : 'No description')}</div>
                     <div className="meta" style={{ marginTop: 3, gap: 10 }}>
@@ -275,7 +282,7 @@ export default function Repos({ mobile }) {
       </Glass>
 
       {settings.fFilters !== false && <div className="filters">
-        {FILTERS.map(([v, l]) => (
+        {FILTERS.filter(([v]) => !['vercel', 'netlify'].includes(v) || counts[v] > 0).map(([v, l]) => (
           <button key={v} className={`chip ${filter === v ? 'on' : ''}`} onClick={() => setFilter(v)}>{l}<span className="n">{counts[v]}</span></button>
         ))}
       </div>}
@@ -360,6 +367,7 @@ function RepoCard({ r, i, open, selecting, selected, pinned, tags = [], togglePi
           <div className="card-title">
             <span className="name">{r.name}</span>
             {pinned && <Pin size={12} fill="currentColor" className="pin-flag" />}
+            <HostBadges repo={r} />
           </div>
           <div className="card-sub">
             {r.private ? <Lock size={11} /> : <Globe size={11} />} {r.private ? 'Private' : 'Public'}
