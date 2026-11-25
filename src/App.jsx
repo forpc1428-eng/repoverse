@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { LayoutGrid, MonitorPlay, FolderUp, BarChart3, SlidersHorizontal, RefreshCw, Search, BookMarked, Command, ArrowLeft, Gauge } from 'lucide-react'
+import {
+  LayoutGrid, MonitorPlay, FolderUp, BarChart3, SlidersHorizontal, RefreshCw, Search, BookMarked, Command, ArrowLeft, Gauge, Inbox as InboxIcon, Cloud, Wrench, MoreHorizontal,
+} from 'lucide-react'
 import Background from './components/Background'
 import { Glass, Modal, Spinner, spring, useToast } from './components/ui'
 import { useAuth } from './lib/auth'
-import { useIsMobile } from './lib/settings'
+import { useIsMobile, useSettings } from './lib/settings'
 import { go, useRoute } from './lib/router'
-import { onRateLimit } from './lib/github'
+import { onRateLimit, setSmartCache } from './lib/github'
+import { recordSnapshot } from './lib/growth'
 import Login from './views/Login'
 import Repos from './views/Repos'
 import RepoDetail from './views/RepoDetail'
@@ -14,15 +17,21 @@ import Wall from './views/Wall'
 import Push from './views/Push'
 import Insights from './views/Insights'
 import Customize from './views/Customize'
+import Inbox from './views/Inbox'
+import Hosting from './views/Hosting'
+import Tools from './views/Tools'
 import AccountMenu from './components/AccountMenu'
+import Credit from './components/Credit'
 import Dock, { orderNav } from './components/Dock'
-import { useSettings } from './lib/settings'
 
 export const NAV = [
   { id: 'repos', label: 'Repositories', short: 'Repos', icon: LayoutGrid, sub: 'Everything you own on GitHub' },
+  { id: 'inbox', label: 'Inbox', short: 'Inbox', icon: InboxIcon, sub: 'Notifications, reviews and new stars' },
   { id: 'wall', label: 'Preview Wall', short: 'Sites', icon: MonitorPlay, sub: 'Every live site, side by side' },
+  { id: 'hosting', label: 'Hosting', short: 'Hosting', icon: Cloud, sub: 'Your Vercel and Netlify projects' },
   { id: 'push', label: 'Push Folder', short: 'Push', icon: FolderUp, sub: 'From your disk to GitHub in one step' },
-  { id: 'insights', label: 'Insights', short: 'Insights', icon: BarChart3, sub: 'Activity, languages and health' },
+  { id: 'tools', label: 'Tools', short: 'Tools', icon: Wrench, sub: 'Portfolio, profile, templates, sweep' },
+  { id: 'insights', label: 'Insights', short: 'Insights', icon: BarChart3, sub: 'Activity, languages, health and growth' },
   { id: 'customize', label: 'Customize', short: 'Style', icon: SlidersHorizontal, sub: 'Your moon, your sky, your space' },
 ]
 
@@ -50,8 +59,8 @@ export default function App() {
   )
 }
 
-const FEATURE_OF = { wall: 'fWall', push: 'fPush', insights: 'fInsights' }
-function useNav() {
+const FEATURE_OF = { wall: 'fWall', push: 'fPush', insights: 'fInsights', inbox: 'fInbox', tools: 'fTools', hosting: 'fHosting' }
+export function useNav() {
   const { settings } = useSettings()
   return NAV.filter((n) => !FEATURE_OF[n.id] || settings[FEATURE_OF[n.id]] !== false)
 }
@@ -82,16 +91,20 @@ function useShortcuts(setPalette) {
   }, [setPalette, settings.fPalette, settings.fShortcuts, nav])
 }
 
-/** Optional background refresh of the repo list (Settings → Features). */
-function useAutoRefresh() {
+/** Background services: auto-refresh, smart cache switch, daily growth snapshot. */
+function useServices() {
   const { settings } = useSettings()
-  const { refreshRepos } = useAuth()
+  const { refreshRepos, repos, user, demo } = useAuth()
   useEffect(() => {
     const min = settings.autoRefresh
     if (!min) return
     const t = setInterval(() => !document.hidden && refreshRepos().catch(() => {}), min * 60000)
     return () => clearInterval(t)
   }, [settings.autoRefresh, refreshRepos])
+  useEffect(() => setSmartCache(settings.fSmartCache !== false), [settings.fSmartCache])
+  useEffect(() => {
+    if (!demo && settings.fGrowth !== false && repos.length) recordSnapshot(user.login, repos).catch(() => {})
+  }, [repos, user?.login, demo, settings.fGrowth])
 }
 
 function Shell() {
@@ -99,7 +112,7 @@ function Shell() {
   const [palette, setPalette] = useState(false)
   const [accountsOpen, setAccountsOpen] = useState(false)
   useShortcuts(setPalette)
-  useAutoRefresh()
+  useServices()
   const props = { openPalette: () => setPalette(true), openAccounts: () => setAccountsOpen(true) }
   return (
     <>
@@ -115,8 +128,11 @@ function PageBody({ route, page, mobile }) {
     <>
       {page === 'repos' && <Repos mobile={mobile} />}
       {page === 'repo' && <RepoDetail owner={route.params[0]} name={route.params[1]} tab={route.params[2] || 'overview'} path={route.params.slice(3).join('/')} />}
+      {page === 'inbox' && <Inbox />}
       {page === 'wall' && <Wall />}
+      {page === 'hosting' && <Hosting />}
       {page === 'push' && <Push />}
+      {page === 'tools' && <Tools />}
       {page === 'insights' && <Insights />}
       {page === 'customize' && <Customize />}
     </>
@@ -128,18 +144,24 @@ const refreshWith = (refreshRepos, toast) => () => refreshRepos().then(() => toa
 // ======================================================================= desktop
 function DesktopShell({ openPalette, openAccounts }) {
   const { route, page, active, nav: NAVS } = usePage()
-  const { user, refreshRepos, reposLoading, demo, accounts } = useAuth()
+  const { refreshRepos, reposLoading, demo } = useAuth()
   const { settings } = useSettings()
   const { toast } = useToast()
   const [rate, setRate] = useState(null)
   useEffect(() => onRateLimit(setRate), [])
   const nav = NAVS.find((n) => n.id === active) || NAV[0]
-  const actions = <HeadActions openPalette={settings.fPalette !== false ? openPalette : null} rate={rate} reposLoading={reposLoading} onRefresh={refreshWith(refreshRepos, toast)} />
+  const actions = (
+    <HeadActions
+      openPalette={settings.fPalette !== false ? openPalette : null}
+      rate={settings.fRateBadge !== false ? rate : null}
+      reposLoading={reposLoading}
+      onRefresh={refreshWith(refreshRepos, toast)}
+    />
+  )
 
   return (
     <div className="app">
       <Dock nav={NAVS} active={active} openAccounts={openAccounts} />
-
       <main className="main" id="main">
         <div className="page" key={page + (route.params[0] || '') + (route.params[1] || '')}>
           {page === 'repos' ? (
@@ -163,6 +185,7 @@ function DesktopShell({ openPalette, openAccounts }) {
           <PageBody route={route} page={page} />
         </div>
       </main>
+      <Credit />
     </div>
   )
 }
@@ -191,15 +214,22 @@ function HeadActions({ openPalette, rate, reposLoading, onRefresh }) {
 function MobileShell({ openPalette, openAccounts }) {
   const { route, page, active, nav: NAVS } = usePage()
   const { user, refreshRepos, reposLoading, accounts } = useAuth()
+  const { settings } = useSettings()
   const { toast } = useToast()
+  const [more, setMore] = useState(false)
   const nav = NAVS.find((n) => n.id === active) || NAV[0]
+  // phones show 4 tabs + "More" when there are more than 5 pages
+  const ordered = orderNav(NAVS, settings)
+  const tabs = ordered.length > 5 ? ordered.slice(0, 4) : ordered
+  const rest = ordered.length > 5 ? ordered.slice(4) : []
+  const restActive = rest.some((n) => n.id === active)
 
   return (
     <div className="m-app">
       <header className="m-head">
         {page === 'repo' && <button className="glass btn icon" onClick={() => go('repos')} aria-label="Back"><ArrowLeft size={18} /></button>}
         <h1>{page === 'repo' ? route.params[1] : page === 'repos' ? 'RepoVerse' : nav.label}</h1>
-        {useSettings().settings.fPalette !== false && <button className="glass btn icon" onClick={openPalette} aria-label="Search"><Search size={18} /></button>}
+        {settings.fPalette !== false && <button className="glass btn icon" onClick={openPalette} aria-label="Search"><Search size={18} /></button>}
         {page === 'repos' && (
           <button className="glass btn icon" onClick={refreshWith(refreshRepos, toast)} aria-label="Refresh">
             {reposLoading ? <Spinner /> : <RefreshCw size={17} />}
@@ -212,16 +242,35 @@ function MobileShell({ openPalette, openAccounts }) {
       </header>
       <main className="m-main" key={page + (route.params[1] || '')}>
         <PageBody route={route} page={page} mobile />
+        <Credit inline />
       </main>
       <Glass as="nav" className="m-tabs" aria-label="Main">
-        {orderNav(NAVS, useSettings().settings).map((n) => (
+        {tabs.map((n) => (
           <button key={n.id} className={`m-tab ${active === n.id ? 'on' : ''}`} onClick={() => go(n.id)} aria-label={n.label}>
             {active === n.id && <motion.span layoutId="m-pill" className="dock-pill" transition={spring} />}
             <n.icon size={21} />
             {n.short}
           </button>
         ))}
+        {rest.length > 0 && (
+          <button className={`m-tab ${restActive ? 'on' : ''}`} onClick={() => setMore(true)} aria-label="More pages">
+            {restActive && <motion.span layoutId="m-pill" className="dock-pill" transition={spring} />}
+            <MoreHorizontal size={21} />
+            More
+          </button>
+        )}
       </Glass>
+      <Modal open={more} onClose={() => setMore(false)}>
+        <h2>More</h2>
+        <div className="more-grid">
+          {rest.map((n) => (
+            <button key={n.id} className={active === n.id ? 'on' : ''} onClick={() => (go(n.id), setMore(false))}>
+              <n.icon size={22} />
+              {n.short}
+            </button>
+          ))}
+        </div>
+      </Modal>
     </div>
   )
 }
@@ -229,6 +278,7 @@ function MobileShell({ openPalette, openAccounts }) {
 // ======================================================================= palette
 function CommandPalette({ open, onClose }) {
   const { repos } = useAuth()
+  const nav = useNav()
   const [q, setQ] = useState('')
   const [sel, setSel] = useState(0)
   useEffect(() => {
@@ -238,12 +288,12 @@ function CommandPalette({ open, onClose }) {
     }
   }, [open])
   const items = useMemo(() => {
-    const pages = NAV.map((n) => ({ key: 'p' + n.id, label: n.label, icon: n.icon, hint: 'Page', run: () => go(n.id) }))
+    const pages = nav.map((n) => ({ key: 'p' + n.id, label: n.label, icon: n.icon, hint: 'Page', run: () => go(n.id) }))
     const rs = repos.map((r) => ({ key: r.full_name, label: r.full_name, icon: BookMarked, hint: r.private ? 'Private' : 'Repo', run: () => go('repo', r.owner.login, r.name) }))
     const t = q.toLowerCase().trim()
     const all = [...pages, ...rs]
     return (t ? all.filter((i) => i.label.toLowerCase().includes(t)) : all).slice(0, 40)
-  }, [q, repos])
+  }, [q, repos, nav])
   const run = (i) => {
     i?.run()
     onClose()

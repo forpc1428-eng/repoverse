@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Search, Star, GitFork, Lock, Globe, LayoutGrid, List, Columns3, CalendarClock, Pin, PinOff, CheckSquare, Tag, Archive, ArchiveRestore,
@@ -10,6 +10,7 @@ import { useSettings } from '../lib/settings'
 import { go } from '../lib/router'
 import { fmt, health, healthColor, langColor, siteUrl, timeAgo } from '../lib/util'
 import { autoDetails } from '../lib/auto'
+import { createClient } from '../lib/github'
 
 const FILTERS = [
   ['all', 'All'], ['pinned', 'Pinned'], ['public', 'Public'], ['private', 'Private'], ['sites', 'Has site'], ['forks', 'Forks'], ['archived', 'Archived'],
@@ -23,6 +24,7 @@ function greeting() {
 
 function Hero({ repos, mobile }) {
   const { user } = useAuth()
+  const { settings: S } = useSettings()
   const first = (user.name || user.login).split(' ')[0]
   const stars = repos.reduce((n, r) => n + r.stargazers_count, 0)
   const sites = repos.filter((r) => siteUrl(r)).length
@@ -40,21 +42,21 @@ function Hero({ repos, mobile }) {
       <div className="eyebrow"><Moon size={13} /> {greeting()}</div>
       <h1>Hello, <span className="grad-text">{first}</span>.</h1>
       <p>{recent ? `You pushed to ${recent} ${recent === 1 ? 'repo' : 'repos'} this week. ` : ''}Your whole GitHub, under one moon.</p>
-      <div className="hero-stats">
+      {S.fHeroStats !== false && <div className="hero-stats">
         <span className="hero-stat"><BookMarked size={13} /><b>{repos.length}</b> repos</span>
         <span className="hero-stat"><Star size={13} /><b>{fmt(stars)}</b> stars</span>
         <span className="hero-stat"><Globe size={13} /><b>{sites}</b> live sites</span>
-      </div>
-      <div className="hero-actions">
+      </div>}
+      {S.fHeroActions !== false && <div className="hero-actions">
         <button className="btn primary" onClick={() => go('push')}><FolderUp size={16} /> Push a folder</button>
         <button className="glass btn" onClick={() => go('wall')}><MonitorPlay size={16} /> Preview wall</button>
-      </div>
+      </div>}
     </section>
   )
 }
 
 export default function Repos({ mobile }) {
-  const { repos, reposLoading, gh, patchRepo } = useAuth()
+  const { repos, reposLoading, gh, patchRepo, accounts, switchAccount, user: me } = useAuth()
   const { settings, update, userData, setUserData } = useSettings()
   const { toast, confirm } = useToast()
   const [q, setQ] = useState('')
@@ -67,12 +69,28 @@ export default function Repos({ mobile }) {
   const [tagEditor, setTagEditor] = useState(null)
   const [bulkBusy, setBulkBusy] = useState('')
 
+  // "All accounts in one view": also list repos from your other signed-in accounts
+  const [others, setOthers] = useState([])
+  useEffect(() => {
+    if (settings.fMergeAccounts !== true || accounts.length < 2) return setOthers([])
+    let alive = true
+    Promise.all(accounts.filter((a) => a.login !== me.login).map((a) => createClient(a.token).repos().then((rs) => rs.map((r) => ({ ...r, _acct: a.login }))).catch(() => [])))
+      .then((lists) => alive && setOthers(lists.flat()))
+    return () => {
+      alive = false
+    }
+  }, [settings.fMergeAccounts, accounts, me.login])
+  const allRepos = useMemo(() => {
+    const seen = new Set(repos.map((r) => r.id))
+    return [...repos, ...others.filter((r) => !seen.has(r.id))]
+  }, [repos, others])
+
   const langs = useMemo(() => [...new Set(repos.map((r) => r.language).filter(Boolean))].sort(), [repos])
   const allTags = useMemo(() => [...new Set(Object.values(userData.tags).flat())].sort(), [userData.tags])
 
   const list = useMemo(() => {
     const t = q.toLowerCase().trim()
-    let l = repos.filter((r) => {
+    let l = allRepos.filter((r) => {
       if (filter === 'pinned' && !userData.pins.includes(r.full_name)) return false
       if (filter === 'public' && r.private) return false
       if (filter === 'private' && !r.private) return false
@@ -99,7 +117,7 @@ export default function Repos({ mobile }) {
     l = [...l].sort(by)
     // pinned always first
     return [...l.filter((r) => userData.pins.includes(r.full_name)), ...l.filter((r) => !userData.pins.includes(r.full_name))]
-  }, [repos, q, filter, lang, tagFilter, settings.sort, settings.fForks, userData])
+  }, [allRepos, q, filter, lang, tagFilter, settings.sort, settings.fForks, userData])
 
   const togglePin = (full) =>
     setUserData((u) => ({ ...u, pins: u.pins.includes(full) ? u.pins.filter((p) => p !== full) : [full, ...u.pins] }))
@@ -109,7 +127,11 @@ export default function Repos({ mobile }) {
       n.has(full) ? n.delete(full) : n.add(full)
       return n
     })
-  const open = (r) => (selecting ? toggleSel(r.full_name) : go('repo', r.owner.login, r.name))
+  const open = async (r) => {
+    if (selecting) return toggleSel(r.full_name)
+    if (r._acct) await switchAccount(r._acct) // repo from another account: switch to it first
+    go('repo', r.owner.login, r.name)
+  }
 
   // ---------- bulk ----------
   const selRepos = repos.filter((r) => selected.has(r.full_name))
@@ -177,11 +199,11 @@ export default function Repos({ mobile }) {
             <input className="input glass" style={{ height: 46, borderRadius: 16 }} placeholder={`Search ${repos.length} repos`} value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
         </div>
-        <div className="filters">
+        {settings.fFilters !== false && <div className="filters">
           {FILTERS.map(([v, l]) => (
             <button key={v} className={`chip ${filter === v ? 'on' : ''}`} onClick={() => setFilter(v)}>{l}<span className="n">{counts[v]}</span></button>
           ))}
-        </div>
+        </div>}
         {reposLoading && !repos.length ? (
           <div className="m-list">{Array.from({ length: 8 }, (_, i) => <div key={i} className="shimmer" style={{ height: 66 }} />)}</div>
         ) : !list.length ? (
@@ -252,11 +274,11 @@ export default function Repos({ mobile }) {
         <Seg id="view" value={view} onChange={(v) => update({ view: v })} options={viewOptions} />
       </Glass>
 
-      <div className="filters">
+      {settings.fFilters !== false && <div className="filters">
         {FILTERS.map(([v, l]) => (
           <button key={v} className={`chip ${filter === v ? 'on' : ''}`} onClick={() => setFilter(v)}>{l}<span className="n">{counts[v]}</span></button>
         ))}
-      </div>
+      </div>}
 
       {reposLoading && !repos.length ? (
         <div className="grid">{Array.from({ length: 9 }, (_, i) => <div key={i} className="shimmer" style={{ height: 170 }} />)}</div>
@@ -341,20 +363,20 @@ function RepoCard({ r, i, open, selecting, selected, pinned, tags = [], togglePi
           </div>
           <div className="card-sub">
             {r.private ? <Lock size={11} /> : <Globe size={11} />} {r.private ? 'Private' : 'Public'}
-            {r.fork && ' · Fork'}{r.archived && ' · Archived'} · {timeAgo(r.pushed_at)}
+            {r.fork && ' · Fork'}{r.archived && ' · Archived'} · {timeAgo(r.pushed_at)}{r._acct ? ` · @${r._acct}` : ''}
           </div>
         </div>
         {settings.showHealth && <span className="health-dot" style={{ color: healthColor(h.score) }} title={`Health ${h.score}%`} />}
       </div>
-      <p className="card-desc">{r.description || <span className="faint">No description yet</span>}</p>
-      {tags.length > 0 && <div className="row wrap" style={{ gap: 6 }}>{tags.map((t) => <span key={t} className="tag local">#{t}</span>)}</div>}
+      {settings.fCardDesc !== false && <p className="card-desc">{r.description || <span className="faint">No description yet</span>}</p>}
+      {settings.fCardTags !== false && tags.length > 0 && <div className="row wrap" style={{ gap: 6 }}>{tags.map((t) => <span key={t} className="tag local">#{t}</span>)}</div>}
       <div className="card-foot">
-        <div className="meta">
+        <div className="meta" style={settings.fCardMeta === false ? { visibility: 'hidden' } : undefined}>
           {r.language && <span><i className="lang-dot" style={{ background: accent }} />{r.language}</span>}
           <span><Star size={13} />{fmt(r.stargazers_count)}</span>
           {r.forks_count > 0 && <span><GitFork size={13} />{fmt(r.forks_count)}</span>}
         </div>
-        <div className="card-actions" onClick={(e) => e.stopPropagation()}>
+        <div className="card-actions" style={settings.fCardActions === false ? { display: 'none' } : undefined} onClick={(e) => e.stopPropagation()}>
           {site && <a className="btn ghost sm icon" href={site} target="_blank" rel="noopener noreferrer" title="Open site" aria-label="Open site"><ExternalLink size={14} /></a>}
           <button className="btn ghost sm icon" title="Copy clone URL" aria-label="Copy clone URL" onClick={() => navigator.clipboard.writeText(r.clone_url)}><Copy size={14} /></button>
           <button className="btn ghost sm icon" title="Local tags" aria-label="Local tags" onClick={() => setTagEditor(r.full_name)}><Tag size={14} /></button>

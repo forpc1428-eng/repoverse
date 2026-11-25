@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Monitor, Tablet, Smartphone, Maximize2, ExternalLink, Activity, Search, Image as ImageIcon, Radio, MonitorPlay, Settings2, X } from 'lucide-react'
+import { Monitor, Tablet, Smartphone, Maximize2, ExternalLink, Activity, Search, Image as ImageIcon, Radio, MonitorPlay, Settings2, X, Link2 } from 'lucide-react'
 import { Glass, Modal, Seg, Spinner } from '../components/ui'
 import ScaledFrame from '../components/ScaledFrame'
 import { useAuth } from '../lib/auth'
@@ -60,7 +60,7 @@ export default function Wall() {
   }, [sites])
 
   useEffect(() => {
-    if (sites.length && !Object.keys(status).length) checkAll()
+    if (settings.fHealthCheck !== false && sites.length && !Object.keys(status).length) checkAll()
   }, [sites.length]) // eslint-disable-line
 
   const openFull = (s) => {
@@ -94,9 +94,10 @@ export default function Wall() {
           { value: 'tablet', icon: <Tablet size={15} />, title: 'Tablet' },
           { value: 'mobile', icon: <Smartphone size={15} />, title: 'Mobile' },
         ]} />
-        <Seg id="wallmode" value={settings.wallMode} onChange={(v) => update({ wallMode: v })} options={[
+        <Seg id="wallmode" value={settings.previewMode} onChange={(v) => update({ previewMode: v })} options={[
           { value: 'live', icon: <Radio size={15} />, label: 'Live' },
           { value: 'snapshot', icon: <ImageIcon size={15} />, label: 'Snapshot' },
+          { value: 'link', icon: <Link2 size={15} />, label: 'Link only' },
         ]} />
         <div className="row" style={{ minWidth: 200 }}>
           <span className="faint" style={{ fontSize: 13 }}>Size</span>
@@ -112,7 +113,7 @@ export default function Wall() {
         {/* click a preview = full screen, Ctrl/⌘/middle-click = new tab */}
         {sites.map((s, i) => (
           <motion.div key={s.repo.id} initial={{ opacity: 0, y: 20, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ delay: Math.min(i, 12) * 0.04, duration: 0.45, ease: [0.22, 1, 0.36, 1] }}>
-            <SiteCard s={s} st={status[s.url]} device={device} mode={settings.fLivePreviews === false ? 'snapshot' : settings.wallMode} onFull={() => openFull(s)} />
+            <SiteCard s={s} st={status[s.url]} device={device} mode={settings.fLivePreviews === false && settings.previewMode === 'live' ? 'snapshot' : settings.previewMode} onFull={() => openFull(s)} />
           </motion.div>
         ))}
       </div>
@@ -126,6 +127,16 @@ function SiteCard({ s, st, device, mode, onFull }) {
   const [loaded, setLoaded] = useState(false)
   const d = DEVICES[device]
   const snapshot = `https://opengraph.githubassets.com/1/${s.repo.full_name}`
+  if (mode === 'link')
+    return (
+      <Glass className="card link-card" style={{ cursor: 'default' }}>
+        <span className={`status-dot ${st ? st.state : 'unknown'}`} />
+        <b style={{ whiteSpace: 'nowrap', cursor: 'pointer' }} onClick={() => go('repo', s.repo.owner.login, s.repo.name)}>{s.repo.name}</b>
+        <a className="url-pill" href={s.url} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>{s.url.replace(/^https?:\/\//, '')}</a>
+        <button className="btn ghost sm icon" onClick={onFull} title="Full screen" aria-label="Full screen"><Maximize2 size={14} /></button>
+        <a className="btn sm" href={s.url} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> New tab</a>
+      </Glass>
+    )
   return (
     <Glass className="shot card" style={{ cursor: 'default' }}>
       <div className="shot-bar">

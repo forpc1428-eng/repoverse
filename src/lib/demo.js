@@ -102,6 +102,19 @@ export function createDemoClient() {
     graphql: async () => ({ user: { contributionsCollection: { contributionCalendar: { totalContributions: days.reduce((n, d) => n + d.contributionCount, 0), weeks } } } }),
     searchCode: async (q) => ({ total_count: 2, items: [{ sha: '1', path: 'src/main.js', repository: demoRepos[0] }, { sha: '2', path: 'src/app.ts', repository: demoRepos[2] }].map((x) => ({ ...x, q })) }),
     gists: async () => [],
+    notifications: async () => [
+      { id: '1', unread: true, reason: 'review_requested', updated_at: ago(0.1), subject: { title: 'Improve mobile layout', type: 'PullRequest', url: 'https://api.github.com/repos/demo-dev/nebula-portfolio/pulls/13' }, repository: { full_name: 'demo-dev/nebula-portfolio', html_url: '#' } },
+      { id: '2', unread: true, reason: 'mention', updated_at: ago(0.6), subject: { title: 'Shader looks off on Safari', type: 'Issue', url: 'https://api.github.com/repos/demo-dev/orbit-forge/issues/7' }, repository: { full_name: 'demo-dev/orbit-forge', html_url: '#' } },
+      { id: '3', unread: false, reason: 'subscribed', updated_at: ago(2), subject: { title: 'v1.2.0', type: 'Release', url: null }, repository: { full_name: 'demo-dev/snack-toss', html_url: '#' } },
+    ],
+    searchIssues: async () => ({ items: [] }),
+    latestRelease: async () => ({ tag_name: 'v1.2.0', name: 'Glass update' }),
+    compare: async () => ({ ahead_by: 4, behind_by: 1 }),
+    commits: async () => [],
+    deployments: async () => [],
+    pagesBuild: async () => ({ status: 'built', updated_at: ago(1) }),
+    dependabotAlerts: async () => [],
+    secretAlerts: async () => [],
     get: async (p) => {
       if (p === '/licenses/mit') throw demoError()
       return {}

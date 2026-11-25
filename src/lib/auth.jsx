@@ -10,7 +10,7 @@ const API = (import.meta.env.VITE_AUTH_WORKER_URL || '').replace(/\/$/, '') || '
 
 // Every permission RepoVerse needs, requested once in a single GitHub approval screen.
 // After the first approval GitHub skips the screen and signs you straight in.
-export const SCOPES = ['repo', 'workflow', 'gist', 'read:user', 'user:email', 'delete_repo']
+export const SCOPES = ['repo', 'workflow', 'gist', 'read:user', 'user:email', 'delete_repo', 'notifications', 'security_events']
 
 let configPromise
 /** The OAuth client ID is public; it is served by /api/config so no rebuild is needed to set it. */

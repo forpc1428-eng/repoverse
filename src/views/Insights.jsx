@@ -6,6 +6,7 @@ import { useAuth } from '../lib/auth'
 import { useSettings, WIDGETS } from '../lib/settings'
 import { go } from '../lib/router'
 import { fmt, health, healthColor, langColor, timeAgo, pool } from '../lib/util'
+import { loadGrowth } from '../lib/growth'
 
 export default function Insights() {
   const { repos } = useAuth()
@@ -34,6 +35,7 @@ export default function Insights() {
       case 'health': return <HealthTable repos={own} />
       case 'recent': return <Recent repos={repos} />
       case 'traffic': return <Traffic repos={own} />
+      case 'growth': return <Growth />
       default: return null
     }
   }
@@ -275,5 +277,39 @@ function Traffic({ repos }) {
         </div>
       ))}
     </div>
+  )
+}
+
+function Growth() {
+  const { user, demo } = useAuth()
+  const { settings } = useSettings()
+  const [hist, setHist] = useState(null)
+  useEffect(() => {
+    if (demo) {
+      const d = Date.now()
+      return setHist(Array.from({ length: 30 }, (_, i) => ({ date: new Date(d - (29 - i) * 86400000).toISOString().slice(0, 10), stars: 700 + Math.round(i * 3 + Math.sin(i) * 4) })))
+    }
+    loadGrowth(user.login).then(setHist)
+  }, [user.login, demo])
+  if (settings.fGrowth === false) return <div className="faint">Growth tracking is off (Customize → Features → Insights).</div>
+  if (!hist) return <div className="shimmer" style={{ height: 120 }} />
+  if (hist.length < 2) return <div className="muted">Tracking started. RepoVerse saves one small snapshot a day on this device, so your star history builds up from today.</div>
+  const W = 600, H = 120
+  const min = Math.min(...hist.map((h) => h.stars)), max = Math.max(...hist.map((h) => h.stars))
+  const pts = hist.map((h, i) => [(i / (hist.length - 1)) * W, H - 8 - ((h.stars - min) / Math.max(1, max - min)) * (H - 20)])
+  const line = pts.map((p) => p.join(',')).join(' ')
+  const gain = hist[hist.length - 1].stars - hist[0].stars
+  return (
+    <>
+      <div className="row" style={{ gap: 14, marginBottom: 8 }}>
+        <b className="grad-text" style={{ fontSize: 22 }}>{hist[hist.length - 1].stars.toLocaleString()} ★</b>
+        <span className="tag" style={{ color: gain >= 0 ? '#6ee7b7' : '#fca5a5' }}>{gain >= 0 ? '+' : ''}{gain} since {new Date(hist[0].date).toLocaleDateString()}</span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" aria-label="Stars over time">
+        <defs><linearGradient id="gfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor="var(--c2)" stopOpacity=".35" /><stop offset="1" stopColor="var(--c2)" stopOpacity="0" /></linearGradient></defs>
+        <polygon points={`0,${H} ${line} ${W},${H}`} fill="url(#gfill)" />
+        <polyline points={line} fill="none" stroke="var(--c2)" strokeWidth="2.5" vectorEffect="non-scaling-stroke" />
+      </svg>
+    </>
   )
 }

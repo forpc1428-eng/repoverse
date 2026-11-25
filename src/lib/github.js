@@ -15,10 +15,21 @@ export function onRateLimit(fn) {
   return () => listeners.delete(fn)
 }
 
+// Smart caching: GitHub answers "304 Not Modified" for unchanged data, which is
+// instant and does NOT count against the hourly rate limit. (Settings → Features)
+const etagCache = new Map()
+let etagEnabled = true
+export const setSmartCache = (on) => {
+  etagEnabled = !!on
+  if (!on) etagCache.clear()
+}
+
 export function createClient(token) {
   async function request(method, path, body, { raw = false, headers = {}, signal } = {}) {
     const url = path.startsWith('http') ? path : `https://api.github.com${path}`
-    const res = await fetch(url, {
+    const key = token.slice(-8) + ' ' + url
+    const cached = method === 'GET' && etagEnabled ? etagCache.get(key) : null
+    const res0 = await fetch(url, {
       method,
       signal,
       headers: {
@@ -26,17 +37,27 @@ export function createClient(token) {
         'X-GitHub-Api-Version': '2022-11-28',
         Authorization: `Bearer ${token}`,
         ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(cached ? { 'If-None-Match': cached.etag } : {}),
         ...headers,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       referrerPolicy: 'no-referrer',
       cache: 'no-store',
     })
-    const rem = res.headers.get('x-ratelimit-remaining')
+    let res = res0
+    if (cached && res0.status === 304) {
+      // rebuild a normal response from the cache (keeps the pagination Link header)
+      res = new Response(cached.body, { status: 200, headers: { 'content-type': 'application/json', link: cached.link || '' } })
+    } else if (method === 'GET' && etagEnabled && res0.ok && res0.headers.get('etag')) {
+      const body = await res0.clone().text()
+      if (body.length < 4_000_000) etagCache.set(key, { etag: res0.headers.get('etag'), body, link: res0.headers.get('link') })
+    }
+    if (method !== 'GET') etagCache.forEach((_, k) => k.includes(url.split('?')[0]) && etagCache.delete(k))
+    const rem = res0.headers.get('x-ratelimit-remaining')
     if (rem != null && !url.includes('/search/')) {
       rateLimit.remaining = +rem
-      rateLimit.limit = +res.headers.get('x-ratelimit-limit')
-      rateLimit.reset = +res.headers.get('x-ratelimit-reset')
+      rateLimit.limit = +res0.headers.get('x-ratelimit-limit')
+      rateLimit.reset = +res0.headers.get('x-ratelimit-reset')
       listeners.forEach((fn) => fn({ ...rateLimit }))
     }
     if (raw) return res
@@ -123,5 +144,29 @@ export function createClient(token) {
     createGist: (body) => request('POST', '/gists', body),
     updateGist: (id, body) => request('PATCH', `/gists/${id}`, body),
     gist: (id) => request('GET', `/gists/${id}`),
+
+    // ---- inbox
+    notifications: (all = false) => request('GET', `/notifications?per_page=50${all ? '&all=true' : ''}`),
+    markRead: (id) => request('PATCH', `/notifications/threads/${id}`),
+    markAllRead: () => request('PUT', '/notifications', { read: true }),
+    searchIssues: (q) => request('GET', `/search/issues?q=${encodeURIComponent(q)}&per_page=30&sort=updated`),
+    // ---- releases & deploys
+    latestRelease: (full) => request('GET', `/repos/${full}/releases/latest`),
+    tags: (full) => request('GET', `/repos/${full}/tags?per_page=10`),
+    compare: (full, base, head) => request('GET', `/repos/${full}/compare/${encodeURIComponent(base)}...${encodeURIComponent(head)}`),
+    commits: (full, branch, n = 20) => request('GET', `/repos/${full}/commits?sha=${encodeURIComponent(branch)}&per_page=${n}`),
+    deployments: (full) => request('GET', `/repos/${full}/deployments?per_page=5`),
+    deploymentStatuses: (full, id) => request('GET', `/repos/${full}/deployments/${id}/statuses?per_page=1`),
+    pagesBuild: (full) => request('GET', `/repos/${full}/pages/builds/latest`),
+    // ---- branches, PRs, CI
+    deleteBranch: (full, name) => request('DELETE', `/repos/${full}/git/refs/heads/${encodeURIComponent(name)}`),
+    createBranch: (full, name, sha) => request('POST', `/repos/${full}/git/refs`, { ref: `refs/heads/${name}`, sha }),
+    createPull: (full, body) => request('POST', `/repos/${full}/pulls`, body),
+    mergePull: (full, n, method = 'squash') => request('PUT', `/repos/${full}/pulls/${n}/merge`, { merge_method: method }),
+    rerunFailed: (full, runId) => request('POST', `/repos/${full}/actions/runs/${runId}/rerun-failed-jobs`),
+    // ---- security
+    dependabotAlerts: (full) => request('GET', `/repos/${full}/dependabot/alerts?state=open&per_page=100`),
+    secretAlerts: (full) => request('GET', `/repos/${full}/secret-scanning/alerts?state=open&per_page=100`),
+    starred: () => request('GET', '/user/starred?per_page=1'),
   }
 }

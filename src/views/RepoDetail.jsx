@@ -1,12 +1,14 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowLeft, Star, GitFork, Eye, ExternalLink, Github, Lock, Globe, CheckCircle2, XCircle, FileCode2, BookOpen, Settings2, Activity, LayoutDashboard,
-  Folder, File, FilePlus2, Trash2, Save, Wand2, Rocket, Tag as TagIcon, CircleDot, GitPullRequest, PlayCircle, Plus, X, Copy, Image as ImageIcon,
+  Folder, File, FilePlus2, Trash2, Save, Wand2, GitBranch, Layers, Rocket, Tag as TagIcon, CircleDot, GitPullRequest, PlayCircle, Plus, X, Copy, Image as ImageIcon,
 } from 'lucide-react'
 import { Glass, Modal, Spinner, Switch, Tabs, Field, Ring, useToast } from '../components/ui'
 import Markdown from '../components/Markdown'
 import ScaledFrame from '../components/ScaledFrame'
 import { autoDetails } from '../lib/auto'
+import { useSettings } from '../lib/settings'
+import { DeployStatus, ReleaseHelper, BranchesTab, StagedReview } from './RepoExtras'
 import { PreviewHit, FullScreenPreview, enterFullscreen } from './Wall'
 import { initials } from './Repos'
 import { useAuth } from '../lib/auth'
@@ -31,6 +33,7 @@ export default function RepoDetail({ owner, name, tab, path }) {
       .catch((e) => setErr(e.message))
   }, [full, gh, patchRepo])
 
+  const { settings: RS } = useSettings()
   const setTab = (t) => go('repo', owner, name, t)
   if (err && !repo) return <Glass className="empty">{err}</Glass>
   if (!repo) return <div className="empty"><Spinner size={26} /></div>
@@ -40,8 +43,9 @@ export default function RepoDetail({ owner, name, tab, path }) {
     { value: 'files', label: 'Files', icon: <FileCode2 size={15} /> },
     { value: 'readme', label: 'README Studio', icon: <BookOpen size={15} /> },
     { value: 'activity', label: 'Activity', icon: <Activity size={15} /> },
+    RS.fGitOps !== false && { value: 'branches', label: 'Branches & CI', icon: <GitBranch size={15} /> },
     { value: 'settings', label: 'Settings', icon: <Settings2 size={15} /> },
-  ]
+  ].filter(Boolean)
   const update = (r) => {
     setRepo((x) => ({ ...x, ...r }))
     patchRepo(repo.full_name, r)
@@ -57,6 +61,7 @@ export default function RepoDetail({ owner, name, tab, path }) {
       {tab === 'files' && <Files repo={repo} initialPath={path} />}
       {tab === 'readme' && <ReadmeStudio repo={repo} />}
       {tab === 'activity' && <ActivityTab repo={repo} />}
+      {tab === 'branches' && <BranchesTab repo={repo} />}
       {tab === 'settings' && <SettingsTab repo={repo} update={update} />}
     </div>
   )
@@ -65,6 +70,7 @@ export default function RepoDetail({ owner, name, tab, path }) {
 // ======================================================= Overview
 function Overview({ repo, update, setTab }) {
   const { gh, user } = useAuth()
+  const { settings: S } = useSettings()
   const { toast } = useToast()
   const [langs, setLangs] = useState(null)
   const [fixing, setFixing] = useState('')
@@ -128,6 +134,7 @@ function Overview({ repo, update, setTab }) {
                 <span className="badge">{repo.private ? <><Lock size={10} /> private</> : <><Globe size={10} /> public</>}</span>
                 {repo.archived && <span className="badge">archived</span>}
                 {repo.fork && <span className="badge">fork</span>}
+                {S.fDeployStatus !== false && <DeployStatus repo={repo} />}
               </div>
               <p className="muted" style={{ margin: '6px 0 12px', maxWidth: 720, fontSize: 15 }}>{repo.description || 'No description yet.'}</p>
               <div className="row wrap" style={{ gap: 6 }}>{(repo.topics || []).map((t) => <span key={t} className="tag">{t}</span>)}</div>
@@ -156,7 +163,7 @@ function Overview({ repo, update, setTab }) {
       </Glass>
 
       <div className="widgets">
-        <Glass className="section widget" style={{ '--span': 6 }}>
+        {S.fLanguages !== false && (<Glass className="section widget" style={{ '--span': S.fHealthPanel === false ? 12 : 6 }}>
           <h3>Languages</h3>
           {!langs ? <div className="shimmer" style={{ height: 60 }} /> : !total ? <div className="faint">No code detected</div> : (
             <>
@@ -170,15 +177,15 @@ function Overview({ repo, update, setTab }) {
               </div>
             </>
           )}
-        </Glass>
-        <Glass className="section widget" style={{ '--span': 6 }}>
+        </Glass>)}
+        {S.fHealthPanel !== false && (<Glass className="section widget" style={{ '--span': S.fLanguages === false ? 12 : 6 }}>
           <h3><Ring value={h.score} color={healthColor(h.score)} /> Repo health</h3>
           <div className="col" style={{ gap: 8 }}>
             {h.checks.map((c) => (
               <div key={c.key} className="row" style={{ fontSize: 13.5 }}>
                 {c.ok ? <CheckCircle2 size={16} color="#34d399" /> : <XCircle size={16} color="#f87171" />}
                 <span className="grow">{c.label}</span>
-                {!c.ok && fixes[c.key] && (
+                {!c.ok && fixes[c.key] && (c.key === 'license' || S.fAutoFill !== false) && (
                   <button className="btn sm" onClick={fixes[c.key]} disabled={fixing === c.key}>
                     {fixing === c.key ? <Spinner size={13} /> : <Wand2 size={13} />} Fix
                   </button>
@@ -186,10 +193,10 @@ function Overview({ repo, update, setTab }) {
               </div>
             ))}
           </div>
-        </Glass>
+        </Glass>)}
       </div>
 
-      {site && (
+      {S.fSitePreview !== false && site && (
         <Glass className="shot" lit={false}>
           <div className="shot-bar"><div className="dots"><i /><i /><i /></div><div className="url-pill">{site}</div>
             <a className="btn sm" href={site} target="_blank" rel="noopener noreferrer"><ExternalLink size={13} /> New tab</a>
@@ -219,6 +226,11 @@ function Files({ repo, initialPath }) {
   const [msg, setMsg] = useState('')
   const [saving, setSaving] = useState(false)
   const [filter, setFilter] = useState('')
+  const { settings: FS } = useSettings()
+  const [staged, setStaged] = useState(new Map())
+  const [review, setReview] = useState(false)
+  const stagedRef = useRef(staged)
+  stagedRef.current = staged
 
   const loadTree = useCallback(() => {
     setTree(null)
@@ -253,7 +265,7 @@ function Files({ repo, initialPath }) {
         const img = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'avif'].includes(ext)
         const text = binary ? '' : new TextDecoder().decode(u8)
         setFile({
-          path: p, sha: f.sha, size: f.size, text, original: text, binary,
+          path: p, sha: f.sha, size: f.size, text: stagedRef.current.get(p)?.text ?? text, original: text, binary,
           image: img ? `data:${ext === 'svg' ? 'image/svg+xml' : 'image/' + (ext === 'jpg' ? 'jpeg' : ext)};base64,${b64encodeBytes(u8)}` : null,
         })
         setMsg(`Update ${p}`)
@@ -288,6 +300,11 @@ function Files({ repo, initialPath }) {
     } finally {
       setSaving(false)
     }
+  }
+  const stage = () => {
+    setStaged((m) => new Map(m).set(file.path, { path: file.path, text: file.text, original: file.isNew ? '' : file.original, isNew: !!file.isNew }))
+    setFile((f) => ({ ...f, original: f.text }))
+    toast(`Staged ${file.path}. Open more files, then Review & commit.`, 'success')
   }
   const newFile = () => {
     const p = prompt('New file path (e.g. src/utils.js):')?.trim().replace(/^\/+/, '')
@@ -357,6 +374,13 @@ function Files({ repo, initialPath }) {
           ))
         )}
         {truncated && <div className="hint" style={{ padding: 8 }}>This repository is very large; some files are not listed.</div>}
+        {staged.size > 0 && (
+          <div className="staged-bar">
+            <Layers size={14} /> <span className="grow">{staged.size} staged</span>
+            <button className="btn sm primary" onClick={() => setReview(true)}>Review & commit</button>
+            <button className="btn ghost sm icon" aria-label="Clear staged changes" onClick={() => setStaged(new Map())}><X size={14} /></button>
+          </div>
+        )}
       </Glass>
 
       <Glass className="editor-wrap" lit={false}>
@@ -384,6 +408,11 @@ function Files({ repo, initialPath }) {
                 </div>
                 <div className="row" style={{ padding: 12, borderTop: '1px solid var(--stroke-soft)' }}>
                   <input className="input" value={msg} onChange={(e) => setMsg(e.target.value)} placeholder="Commit message" />
+                  {FS.fStaging !== false && (
+                    <button className="btn" disabled={!dirty && !file.isNew} onClick={stage} title="Collect changes from several files, review the diff, then commit once">
+                      <Layers size={16} /> Stage
+                    </button>
+                  )}
                   <button className="btn primary" disabled={!dirty && !file.isNew || saving} onClick={save}>
                     {saving ? <Spinner /> : <Save size={16} />} Commit to {branch}
                   </button>
@@ -393,6 +422,7 @@ function Files({ repo, initialPath }) {
           </>
         )}
       </Glass>
+      <StagedReview open={review} onClose={() => setReview(false)} repo={repo} branch={branch} staged={staged} onCommitted={() => (setStaged(new Map()), setFile(null), loadTree())} />
     </div>
   )
 }
@@ -482,6 +512,7 @@ function ReadmeStudio({ repo }) {
 // ======================================================= Activity
 function ActivityTab({ repo }) {
   const { gh } = useAuth()
+  const { settings: AS } = useSettings()
   const { toast } = useToast()
   const [data, setData] = useState({})
   const [newRelease, setNewRelease] = useState(false)
@@ -501,7 +532,8 @@ function ActivityTab({ repo }) {
   return (
     <div className="widgets">
       <Glass className="section widget" style={{ '--span': 6 }}>
-        <h3><Rocket size={16} /> Releases <span className="grow" /><button className="btn sm" onClick={() => setNewRelease(true)}><Plus size={14} /> New release</button></h3>
+        <h3><Rocket size={16} /> Releases <span className="grow" /><button className="btn sm" onClick={() => setNewRelease(true)}><Plus size={14} /> Custom</button></h3>
+        {AS.fReleases !== false && <ReleaseHelper repo={repo} onDone={load} />}
         {!data.releases.length ? <div className="faint">No releases yet</div> : data.releases.map((r) => (
           <a key={r.id} className="list-row" href={r.html_url} target="_blank" rel="noopener noreferrer" style={{ padding: '10px 4px', textDecoration: 'none' }}>
             <TagIcon size={15} className="faint" /><b>{r.tag_name}</b><span className="grow muted">{r.name}</span><span className="faint" style={{ fontSize: 12 }}>{timeAgo(r.published_at)}</span>
@@ -579,6 +611,7 @@ function CreateModal({ open, onClose, title, fields, submit, extra = {} }) {
 // ======================================================= Settings
 function SettingsTab({ repo, update }) {
   const { gh, removeRepo } = useAuth()
+  const { settings: SS } = useSettings()
   const { toast, confirm } = useToast()
   const [form, setForm] = useState({ name: repo.name, description: repo.description || '', homepage: repo.homepage || '', default_branch: repo.default_branch, has_issues: repo.has_issues, has_wiki: repo.has_wiki, has_projects: repo.has_projects, has_discussions: !!repo.has_discussions })
   const [topics, setTopics] = useState(repo.topics || [])
@@ -656,10 +689,10 @@ function SettingsTab({ repo, update }) {
       <Glass className="section widget" style={{ '--span': 7 }}>
         <h3>
           General <span className="grow" />
-          <button className="btn sm primary" onClick={autoFill} disabled={busy === 'auto'} title="Fill empty fields from the README, package.json and languages (free, in your browser)">
+          {SS.fAutoFill !== false && <><button className="btn sm primary" onClick={autoFill} disabled={busy === 'auto'} title="Fill empty fields from the README, package.json and languages (free, in your browser)">
             {busy === 'auto' ? <Spinner size={13} /> : <Wand2 size={14} />} Auto-fill
           </button>
-          <button className="btn sm" onClick={autoReplace} disabled={busy === 'auto'} title="Replace description and topics with new suggestions">Regenerate</button>
+          <button className="btn sm" onClick={autoReplace} disabled={busy === 'auto'} title="Replace description and topics with new suggestions">Regenerate</button></>}
         </h3>
         <Field label="Repository name"><input className="input" {...f('name')} /></Field>
         <Field label="Description"><input className="input" {...f('description')} placeholder="What does this project do?" /></Field>

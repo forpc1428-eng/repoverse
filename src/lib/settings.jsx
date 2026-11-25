@@ -87,6 +87,7 @@ export const WIDGETS = [
   { id: 'health', name: 'Repo health', span: 7 },
   { id: 'recent', name: 'Recently pushed', span: 5 },
   { id: 'traffic', name: 'Traffic (views & clones)', span: 12 },
+  { id: 'growth', name: 'Growth over time', span: 12 },
 ]
 
 export const DEFAULTS = {
@@ -98,18 +99,36 @@ export const DEFAULTS = {
   moonX: 0.79, moonY: 0.27, moonSize: 0.42,
   moonXMobile: 0.74, moonYMobile: 0.13, moonSizeMobile: 0.42,
   moonBump: 1, moonTilt: -18, moonRotation: 0, libration: true, moonSpin: 0,
+  moonFollowClock: false, moonLocation: null, // live moon: follows its real path across your sky
+  fSound: false, soundVolume: 0.35, // ambient night sound (generated, no files)
   // sky
   starDensity: 1, starSize: 0.9, starBrightness: 1.1, starTwinkle: 0.6, shooting: 'normal', skyDrift: 1, parallax: true,
   // interface
   blur: 20, glassAlpha: 0.07, radius: 20, cardStyle: 'glass', cardBlur: false, font: 'system', uiScale: 1,
   // layout
-  dock: 'left', dockOrder: ['repos', 'wall', 'push', 'insights', 'customize'], dockHidden: [], dockSize: 'md', dockLabels: false, dockCompact: true,
+  dock: 'left', dockOrder: ['repos', 'inbox', 'wall', 'hosting', 'push', 'tools', 'insights', 'customize'], dockHidden: [], dockSize: 'md', dockLabels: false, dockCompact: true,
   dockPins: true, dockPinCount: 5, dockLogo: true, dockAccount: true,
   cardSize: 'm', density: 'comfy', width: 'contained', view: 'grid', sort: 'pushed', showHealth: true,
   // features (Settings → Features)
-  fWall: true, fPush: true, fInsights: true, fCodeSearch: true, fBulk: true, fBoard: true, fTimeline: true,
-  fPalette: true, fShortcuts: true, fLivePreviews: true, fHero: true, fForks: true, fScene: true, fToasts: true,
+  // pages
+  fWall: true, fPush: true, fInsights: true, fInbox: true, fTools: true, fHosting: true, fVercel: true, fNetlify: true,
+  // tools
+  fPortfolio: true, fProfileReadme: true, fTemplates: true, fSweep: true, fSecurityAlerts: true,
+  // repositories list
+  fHero: true, fHeroStats: true, fHeroActions: true, fFilters: true, fCodeSearch: true, fBulk: true, fBoard: true, fTimeline: true, fForks: true,
+  fCardDesc: true, fCardTags: true, fCardMeta: true, fCardActions: true, fMergeAccounts: false,
+  // repo page
+  fAutoFill: true, fHealthPanel: true, fLanguages: true, fSitePreview: true, fReleases: true, fDeployStatus: true, fGitOps: true, fStaging: true,
+  // previews
+  previewMode: 'live', fHealthCheck: true,
+  // inbox
+  fInboxNotifications: true, fInboxReviews: true, fInboxAssigned: true, fInboxStars: true,
+  // insights
+  fGrowth: true,
+  // app
+  fScene: true, fPalette: true, fShortcuts: true, fToasts: true, fTooltips: true, fRateBadge: true, fSmartCache: true, fCredit: true,
   autoRefresh: 0,
+  perfMode: false, perfBackup: null,
   // performance
   quality: 'auto', fpsCap: 0, reduceMotion: false, motion: 1,
   wallMin: 380, wallMode: 'live',
@@ -139,9 +158,20 @@ export function applySettings(s) {
   r.dataset.cards = s.cardStyle
   r.dataset.dock = s.dock
   r.classList.toggle('cards-blur', !!s.cardBlur)
+  r.classList.toggle('no-tips', s.fTooltips === false)
   r.classList.toggle('reduce-motion', !!s.reduceMotion)
   r.classList.toggle('no-blur', s.blur <= 0)
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', s.skyTop)
+}
+
+// One switch that makes everything as light as possible, and restores your setup after.
+const PERF_KEYS = ['quality', 'fpsCap', 'blur', 'cardBlur', 'previewMode', 'shooting', 'starDensity', 'parallax']
+export function perfPatch(s, on) {
+  if (on) {
+    const backup = Object.fromEntries(PERF_KEYS.map((k) => [k, s[k]]))
+    return { perfMode: true, perfBackup: backup, quality: 'battery', fpsCap: 30, blur: 0, cardBlur: false, previewMode: s.previewMode === 'live' ? 'snapshot' : s.previewMode, shooting: 'rare', starDensity: Math.min(s.starDensity, 0.6), parallax: false }
+  }
+  return { perfMode: false, perfBackup: null, ...(s.perfBackup || {}) }
 }
 
 export function loadSettings() {

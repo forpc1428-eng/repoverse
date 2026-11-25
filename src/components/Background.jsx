@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { moonPosition, skyToScreen, guessLocation } from '../lib/moonpos'
+import { startAmbience, stopAmbience, setAmbienceVolume, resumeAmbience } from '../lib/sound'
 import { useIsMobile, useSettings } from '../lib/settings'
 
 // The live scene instance, for things like the FPS readout in Customize.
@@ -14,7 +16,30 @@ function webglAvailable() {
 }
 
 export default function Background() {
-  const { settings } = useSettings()
+  const { settings: raw } = useSettings()
+  // Live moon: follow the moon's real path across your sky (Customize → Moon)
+  const [clockPos, setClockPos] = useState(null)
+  useEffect(() => {
+    if (!raw.moonFollowClock) return setClockPos(null)
+    const loc = raw.moonLocation || guessLocation()
+    const tick = () => setClockPos(skyToScreen(moonPosition(new Date(), loc.lat, loc.lon)))
+    tick()
+    const t = setInterval(tick, 60000)
+    return () => clearInterval(t)
+  }, [raw.moonFollowClock, raw.moonLocation])
+  const settings = useMemo(
+    () => (clockPos ? { ...raw, moonPhaseMode: 'today', moonX: clockPos.x, moonY: clockPos.y, moonXMobile: clockPos.x, moonYMobile: Math.min(clockPos.y, 0.3), moonVisible: raw.moonVisible && clockPos.visible } : raw),
+    [raw, clockPos]
+  )
+  // Ambient night sound (off by default)
+  useEffect(() => {
+    if (!raw.fSound) return stopAmbience()
+    startAmbience(raw.soundVolume)
+    const resume = () => resumeAmbience()
+    addEventListener('pointerdown', resume, { once: true })
+    return () => removeEventListener('pointerdown', resume)
+  }, [raw.fSound]) // eslint-disable-line
+  useEffect(() => setAmbienceVolume(raw.soundVolume), [raw.soundVolume])
   const mobile = useIsMobile()
   const holder = useRef(null)
   const scene = useRef(null)

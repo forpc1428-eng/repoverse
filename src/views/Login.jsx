@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { Github, ShieldCheck, Sparkles, Lock, MonitorSmartphone, Check } from 'lucide-react'
 import { Glass, Spinner, spring } from '../components/ui'
 import { getAuthConfig, startOAuth, useAuth } from '../lib/auth'
+import Credit from '../components/Credit'
 
 export default function Login() {
   const { error, setError, startDemo } = useAuth()
@@ -73,6 +74,7 @@ export default function Login() {
           <div className="row" style={{ justifyContent: 'center', gap: 6, marginTop: 18, fontSize: 12 }}>
             <Check size={13} color="#34d399" /> <span className="faint">Your token is encrypted and never leaves this browser except to talk to GitHub.</span>
           </div>
+          <Credit inline />
         </Glass>
       </motion.div>
     </div>
